@@ -42,6 +42,11 @@ export interface ToolSchema {
   /**
    * Effects the tool admits to. Treated as a *floor*, never a ceiling — a tool
    * that declares nothing is not thereby harmless, it is merely undeclared.
+   *
+   * The `undefined` / `[]` distinction is load-bearing. `[]` means the tool had
+   * a way to declare its effects and declared none, which is itself evidence.
+   * `undefined` means there was no declaration channel — as in MCP, which has
+   * no such field — and absence of evidence is not evidence.
    */
   declaredEffects?: EffectKind[];
   parameters: Record<string, ParamSpec>;
@@ -69,6 +74,13 @@ export interface Target {
   role: NonNullable<ParamSpec['role']>;
   /** True when the value resolves outside the parameter's declared confinement. */
   escapesConfinement: boolean;
+  /**
+   * True only when the parameter declared a boundary AND this value is inside
+   * it. A parameter that declared no boundary is not thereby compliant with
+   * one — treating those as the same thing let an email to an arbitrary
+   * external address read as confined traffic.
+   */
+  confined: boolean;
 }
 
 /** Why the deriver concluded something. Every fact carries its own provenance. */

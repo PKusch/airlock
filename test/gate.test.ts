@@ -6,6 +6,7 @@ import { renderFallback, verifyConsequence } from '../src/core/verify.ts';
 import { factualNarrator, type Narrator } from '../src/core/narrate.ts';
 import { TOOLS } from '../src/fixtures/tools.ts';
 import { SCENARIOS } from '../src/fixtures/calls.ts';
+import { BENIGN_CALLS, BENIGN_TOOLS } from '../src/fixtures/benign.ts';
 import { SEVERITY, type ProposedConsequence } from '../src/core/types.ts';
 
 const factsFor = (id: string) => {
@@ -210,4 +211,48 @@ test('a withheld narration never repeats a rejection code to the human', () => {
   ]);
   const reason = shown.lines.at(-1)!;
   assert.equal(reason.match(/approval_directive/g)?.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Calibration. A gate that fires on ordinary work is one people learn to
+// click through, so the alarm rate is part of the contract, not a nice-to-have.
+// ---------------------------------------------------------------------------
+
+const ALARM = SEVERITY.high;
+
+test('no ordinary call demands attention', () => {
+  const fired = BENIGN_CALLS.filter(
+    (c) => SEVERITY[deriveFacts(BENIGN_TOOLS[c.tool], c).severity] >= ALARM,
+  );
+  assert.deepEqual(
+    fired.map((c) => `${c.id}:${c.tool}`),
+    [],
+    'benign calls reached the alarm threshold',
+  );
+});
+
+test('every dangerous call still reaches the alarm threshold', () => {
+  const missed = SCENARIOS.filter((s) => s.dangerous).filter(
+    (s) => SEVERITY[deriveFacts(TOOLS[s.call.tool], s.call).severity] < ALARM,
+  );
+  assert.deepEqual(missed.map((s) => s.id), [], 'dangerous calls fell below the alarm threshold');
+});
+
+test('an undeclared boundary is not a satisfied boundary', () => {
+  // Regression: `every(t => !t.escapesConfinement)` counted a parameter that
+  // declared no confinement as confined, so mail to an arbitrary external
+  // address read as routine traffic and dropped below the alarm threshold.
+  const { facts } = factsFor('injected-argument');
+  const recipient = facts.targets.find((t) => t.role === 'recipient')!;
+  assert.equal(recipient.escapesConfinement, false, 'nothing to escape');
+  assert.equal(recipient.confined, false, 'but nothing confined it either');
+  assert.ok(SEVERITY[facts.severity] >= ALARM);
+});
+
+test('a confined, declared effect does not escalate', () => {
+  const weather = BENIGN_CALLS.find((c) => c.tool === 'get_weather')!;
+  const facts = deriveFacts(BENIGN_TOOLS.get_weather, weather);
+  assert.ok(facts.effects.includes('network_egress'));
+  assert.ok(facts.targets.find((t) => t.role === 'url')!.confined);
+  assert.ok(SEVERITY[facts.severity] < ALARM, 'egress inside a declared host is routine');
 });

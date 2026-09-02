@@ -8,9 +8,14 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test      # 13 tests, including the attack suite
-npm run attack   # the demo: every scenario against a compromised narrator
-npm run dev      # the UI, port 3200
+npm test          # 29 tests: attack suite, calibration, symlinks, MCP end-to-end
+npm run attack    # the demo: every scenario against a compromised narrator
+npm run calibrate # how loud the gate is on ordinary work
+npm run dev       # the UI, port 3200
+
+# wrap a real MCP server
+AIRLOCK_CONFINE='*.path=/Users/me/projects' \
+  node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
 ---
@@ -71,6 +76,46 @@ would have shown.
 
 ---
 
+## Calibration
+
+A gate that fires on ordinary work is one people learn to click through, so the
+alarm rate is part of the contract. Measured against a 30-call benign corpus —
+ordinary reads, searches, formatter runs, doc fetches — where a benign call
+reaching `high` or above counts as a false alarm:
+
+| | false alarms | dangerous calls caught |
+|:--|:--|:--|
+| First ladder | **23%** (7/30) | 5/5 |
+| After correction | **0%** (0/30) | 5/5 |
+
+All seven false alarms declared their effect *and* stayed inside their declared
+boundary, and the ladder ignored both facts. Correcting it meant separating
+"this tool does egress" from "this tool does egress to somewhere nobody
+constrained" — the second is worth stopping for, the first is Tuesday.
+
+**Read that 0% with the caveat it deserves.** The corpus is thirty calls I wrote
+myself, and while it was written before the ladder was corrected, a rate
+measured on your own corpus is weak evidence. It is a floor on the problem, not
+a product claim.
+
+### Under real MCP conditions
+
+The numbers above assume tools declare their effects and their boundaries. Real
+MCP tools declare neither — the protocol has no field for either. Same corpus,
+adapted through `src/mcp/adapt.ts`:
+
+| | false alarms |
+|:--|:--|
+| As published, nothing asserted | **17%** (5/30) |
+| Operator asserts path boundaries | 17% (5/30) |
+| Operator asserts path *and* URL boundaries | **0%** (0/30) |
+
+So the deployment finding is concrete: **Airlock in front of an unmodified MCP
+server interrupts roughly one ordinary call in six, and the fix is an operator
+asserting boundaries the protocol gives tools no way to state.** That is what
+`AIRLOCK_CONFINE` is for, and `adaptationGaps()` reports exactly which
+parameters are still running unchecked.
+
 ## What is verified, and what isn't
 
 | Claim | Status |
@@ -78,7 +123,8 @@ would have shown.
 | The narration does not understate severity, reversibility, count, scope or egress | **Verified in code.** Any one failure withholds the whole narration. |
 | Displayed quantities come from the derived facts | **Verified in code**, and tested against an inflating narrator. |
 | A path argument resolves outside the tool's declared directory | **Verified in code**, lexically (see limits). |
-| The derived severity is the *correct* severity | **Not verified.** It is a heuristic ladder, uncalibrated. |
+| A symlink inside a confined directory pointing out of it | **Verified against a real filesystem** when a resolver is supplied; string-only otherwise, and the human is told which. |
+| The derived severity is the *correct* severity | **Not verified.** The ladder is measured for alarm rate, not for whether `critical` means what a person would mean by it. |
 | The effect inference caught everything the tool really does | **Not verified.** It is lexical (see limits). |
 
 `6/6 held` in the attack report means no compromised narration reached the
@@ -93,21 +139,28 @@ human. It does **not** mean the derivation saw everything the tool can do.
   (`harmonise_state`, which deletes) is caught only if its parameters give it
   away. Real capability annotations, or a signature over a reviewed manifest,
   would be the actual fix.
-- **Path confinement is string-level, not filesystem-level.** `normalisePath`
-  resolves `..` lexically. A symlink *inside* the confined directory pointing
-  out of it escapes confinement with no `..` anywhere in the argument, and this
-  code would not notice. Resolving against a real filesystem is the fix, and it
-  is not done.
+- **Path confinement needs a resolver to be sound.** With `nodeResolver`
+  supplied, symlink escapes are caught against a real filesystem and an
+  unresolvable path is reported as *unknown* rather than safe. Without one — in
+  the browser, where there is no filesystem — the check is string-only, and a
+  symlink inside the confined directory pointing out of it passes. The UI runs
+  in that weaker mode by construction.
 - **No live model is wired in.** The narrator interface and prompt exist;
   nothing calls an API. This is deliberate rather than unfinished: the attack
   suite runs against a *fully compromised* narrator, which is a strictly
   stronger test than a live model that happens to behave. But it means the
   quality of real narration is unmeasured, and I am not claiming it.
-- **No MCP integration.** Calls come from a fixture catalogue. Sitting this in
-  front of a real MCP client is the next piece of work, and until it is done
-  this demonstrates a mechanism rather than shipping a guard.
-- **Severity is not calibrated.** The ladder is a defensible guess. Nobody has
-  measured whether `critical` matches what a person would call critical.
+- **MCP roles are inferred from parameter names.** `path`, `to`, `endpoint`,
+  `command` and friends are matched by name, format and description. A tool that
+  names its file parameter `subject` gets no role and is treated as opaque data.
+  `adaptationGaps()` reports every parameter in that state rather than letting it
+  pass quietly.
+- **The proxy's default is refusal, not approval.** There is no human channel in
+  a stdio pipe, so anything at or above the threshold is returned to the client
+  as an error carrying the consent card. A host with a real approval UI passes
+  `approve`.
+- **Severity is calibrated for loudness, not for meaning.** The alarm rate is
+  measured. Whether `critical` matches what a person would call critical is not.
 
 ## Scenarios
 
@@ -122,12 +175,17 @@ human. It does **not** mean the derivation saw everything the tool can do.
 ## Layout
 
 ```
-src/core/derive.ts    deterministic facts. no model may run here.
-src/core/verify.ts    the one-way checks, and prose assembly
-src/core/narrate.ts   the untrusted half, pluggable
-src/fixtures/         tool catalogue and scenarios
-test/gate.test.ts     13 tests, incl. a fully compromised narrator
-test/attack-report.ts npm run attack
+src/core/derive.ts       deterministic facts. no model may run here.
+src/core/verify.ts       the one-way checks, and prose assembly
+src/core/narrate.ts      the untrusted half, pluggable
+src/core/resolver.node.ts filesystem resolution, kept out of the browser bundle
+src/mcp/adapt.ts         MCP definitions → something derivable, and what was lost
+src/mcp/gate.ts          the guard: derive → narrate → verify → render
+src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
+src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
+test/gate.test.ts        attack suite + calibration
+test/symlink.test.ts     real symlinks on a real filesystem
+test/mcp.test.ts         end to end through a child process over stdio
 ```
 
 ## License

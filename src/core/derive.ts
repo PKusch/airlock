@@ -69,7 +69,17 @@ export function normalisePath(raw: string): string {
   return (isAbsolute ? '/' : '') + out.join('/');
 }
 
-/** True when `candidate` does not sit inside `root` after normalisation. */
+/**
+ * Canonicalises a path by following whatever the filesystem actually does.
+ * The core has to run in a browser, where there is no filesystem, so this is
+ * injected rather than imported — see `resolver.node.ts` for the real one.
+ */
+export interface PathResolver {
+  /** Canonical path with links followed, or `null` if it cannot be resolved. */
+  realpath(path: string): string | null;
+}
+
+/** True when `candidate` does not sit inside `root`, by string alone. */
 export function escapesConfinement(candidate: string, root: string): boolean {
   const c = normalisePath(candidate);
   const r = normalisePath(root);
@@ -79,6 +89,34 @@ export function escapesConfinement(candidate: string, root: string): boolean {
   return !c.startsWith(r.endsWith('/') ? r : r + '/');
 }
 
+/**
+ * Confinement check with a resolver in play. Lexical escape is still decisive —
+ * a resolver that says "inside" cannot overrule `../` — but a path that looks
+ * innocent lexically and lands outside once links are followed is caught here.
+ * This is the symlink case: no `..` appears anywhere in the argument.
+ */
+export function escapesConfinementResolved(
+  candidate: string,
+  root: string,
+  resolver: PathResolver | undefined,
+): { escapes: boolean; resolved: boolean; via: 'lexical' | 'filesystem' } {
+  if (escapesConfinement(candidate, root)) return { escapes: true, resolved: true, via: 'lexical' };
+  if (!resolver) return { escapes: false, resolved: false, via: 'lexical' };
+
+  const realCandidate = resolver.realpath(candidate);
+  const realRoot = resolver.realpath(root);
+  // An unresolvable path is not thereby safe; it is unknown, and the caller is
+  // told so rather than being handed a quiet `false`.
+  if (realCandidate === null || realRoot === null) {
+    return { escapes: false, resolved: false, via: 'filesystem' };
+  }
+  return {
+    escapes: escapesConfinement(realCandidate, realRoot),
+    resolved: true,
+    via: 'filesystem',
+  };
+}
+
 function hostOf(url: string): string | null {
   const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(url.trim());
   return m ? m[1].toLowerCase() : null;
@@ -86,17 +124,24 @@ function hostOf(url: string): string | null {
 
 const GLOB_CHARS = /[*?[\]{}]/;
 
-export function deriveFacts(schema: ToolSchema, call: ToolCall): DerivedFacts {
+export interface DeriveOptions {
+  /** Supply one to catch confinement escapes that only exist on disk. */
+  resolver?: PathResolver;
+}
+
+export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveOptions = {}): DerivedFacts {
   const signals: Signal[] = [];
   const effects = new Set<EffectKind>(schema.declaredEffects ?? []);
   const declared = new Set<EffectKind>(schema.declaredEffects ?? []);
+  /** Whether this tool could have declared its effects at all. */
+  const canDeclare = schema.declaredEffects !== undefined;
 
   // --- Effects inferred from how the tool names and describes itself ---------
   const prose = `${schema.name} ${schema.description}`;
   for (const [effect, tell] of EFFECT_TELLS) {
     if (!tell.test(prose)) continue;
     effects.add(effect);
-    if (!declared.has(effect)) {
+    if (canDeclare && !declared.has(effect)) {
       signals.push({
         code: 'undeclared_effect',
         detail: `Tool text implies '${effect}' but the schema does not declare it`,
@@ -113,7 +158,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall): DerivedFacts {
     const roleEffect = spec.role ? ROLE_EFFECTS[spec.role] : undefined;
     if (roleEffect) {
       effects.add(roleEffect);
-      if (!declared.has(roleEffect)) {
+      if (canDeclare && !declared.has(roleEffect)) {
         signals.push({
           code: 'undeclared_effect',
           detail: `Parameter role '${spec.role}' implies '${roleEffect}', undeclared by the tool`,
@@ -141,7 +186,24 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall): DerivedFacts {
       let escapes = false;
 
       if (spec.role === 'path' || spec.role === 'glob') {
-        if (spec.confinedTo) escapes = escapesConfinement(value, spec.confinedTo);
+        if (spec.confinedTo) {
+          const check = escapesConfinementResolved(value, spec.confinedTo, options.resolver);
+          escapes = check.escapes;
+          if (check.escapes && check.via === 'filesystem') {
+            signals.push({
+              code: 'symlink_escape',
+              detail: `'${value}' stays inside '${spec.confinedTo}' as written, but resolves outside it on disk`,
+              source: name,
+            });
+          }
+          if (!check.resolved && options.resolver) {
+            signals.push({
+              code: 'unresolved_path',
+              detail: `'${value}' could not be resolved on disk — confinement was checked by string only`,
+              source: name,
+            });
+          }
+        }
         if (spec.role === 'glob' || GLOB_CHARS.test(value)) {
           unbounded = true;
           signals.push({
@@ -163,11 +225,17 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall): DerivedFacts {
         });
       }
 
-      targets.push({ value, role: spec.role, escapesConfinement: escapes });
+      targets.push({
+        value,
+        role: spec.role,
+        escapesConfinement: escapes,
+        confined: Boolean(spec.confinedTo) && !escapes,
+      });
     }
   }
 
   const egress = targets.filter((t) => t.role === 'url' || t.role === 'recipient').map((t) => t.value);
+  const hasArbitraryCommand = targets.some((t) => t.role === 'command');
 
   return {
     callId: call.id,
@@ -180,7 +248,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall): DerivedFacts {
     affectedCount: unbounded ? null : targets.filter((t) => t.role === 'path').length,
     reversibility: deriveReversibility(effects),
     egress,
-    severity: deriveSeverity(effects, targets, unbounded, signals),
+    severity: deriveSeverity(effects, targets, unbounded, signals, declared, hasArbitraryCommand, canDeclare),
     signals,
   };
 }
@@ -206,23 +274,53 @@ function deriveSeverity(
   targets: Target[],
   unbounded: boolean,
   signals: Signal[],
+  declared: Set<EffectKind>,
+  hasArbitraryCommand: boolean,
+  canDeclare: boolean,
 ): SeverityName {
   let rank: number = SEVERITY.none;
   const raise = (to: SeverityName) => {
     rank = Math.max(rank, SEVERITY[to]);
   };
 
+  // Whether a destination was checkable at all. An egress the tool confined to
+  // a host, which the argument then matched, is a different thing from an
+  // egress to wherever the argument happened to point.
+  const egressTargets = targets.filter((t) => t.role === 'url');
+  const egressConfined = egressTargets.length > 0 && egressTargets.every((t) => t.confined);
+  const recipients = targets.filter((t) => t.role === 'recipient');
+  const recipientsConfined = recipients.length > 0 && recipients.every((t) => t.confined);
+
   if (effects.has('read')) raise('low');
   if (effects.has('write')) raise('moderate');
-  if (effects.has('network_egress') || effects.has('message_send')) raise('high');
-  if (effects.has('delete') || effects.has('execute')) raise('high');
+
+  // Executing the tool's own fixed operation is ordinary; executing a string
+  // somebody handed it is not.
+  if (effects.has('execute')) raise(hasArbitraryCommand ? 'high' : 'moderate');
+
+  // Egress that stayed inside a declared boundary is routine traffic. Egress
+  // to an unconstrained destination is the thing worth stopping for.
+  if (effects.has('network_egress')) raise(egressConfined ? 'moderate' : 'high');
+  if (effects.has('message_send')) raise(recipientsConfined ? 'moderate' : 'high');
+
+  if (effects.has('delete')) raise(unbounded ? 'critical' : 'high');
   if (effects.has('spend') || effects.has('credential_access')) raise('critical');
 
-  // An unbounded destructive set and an escape past the declared boundary are
-  // each enough on their own to take a call to the top of the scale.
-  if (unbounded && (effects.has('delete') || effects.has('execute'))) raise('critical');
+  if (unbounded && effects.has('execute')) raise('critical');
+
+  // Escaping a boundary the tool declared for itself is the strongest signal
+  // available: the tool stated a limit and the argument left it.
   if (targets.some((t) => t.escapesConfinement)) raise('critical');
-  if (signals.some((s) => s.code === 'undeclared_effect') && rank >= SEVERITY.moderate) raise('high');
+
+  // An effect the tool did not admit to is worth one level on its own — the
+  // schema was wrong about what this tool does, so the rest of it is suspect.
+  // Only when declaring was possible. A protocol with no field for effects —
+  // MCP has none — makes every tool look like it is hiding something, which
+  // escalates everything and destroys the signal it was meant to carry.
+  const undeclaredConsequential =
+    canDeclare && [...effects].some((e) => !declared.has(e) && e !== 'read' && e !== 'write');
+  if (undeclaredConsequential) raise(rank >= SEVERITY.high ? 'critical' : 'high');
+  void signals;
 
   return (Object.keys(SEVERITY) as SeverityName[]).find((k) => SEVERITY[k] === rank) ?? 'none';
 }
