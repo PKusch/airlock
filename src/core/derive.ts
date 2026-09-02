@@ -1,4 +1,16 @@
 import {
+  canDeclare as declarationOffered,
+  countCovers,
+  declaredSet,
+  exactly,
+  isSatisfied,
+  isViolated,
+  unbounded as UNBOUNDED,
+  type Confinement,
+  type Count,
+  type Declaration,
+} from './constraint.ts';
+import {
   REVERSIBILITY,
   SEVERITY,
   type DerivedFacts,
@@ -131,10 +143,14 @@ export interface DeriveOptions {
 
 export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveOptions = {}): DerivedFacts {
   const signals: Signal[] = [];
-  const effects = new Set<EffectKind>(schema.declaredEffects ?? []);
-  const declared = new Set<EffectKind>(schema.declaredEffects ?? []);
-  /** Whether this tool could have declared its effects at all. */
-  const canDeclare = schema.declaredEffects !== undefined;
+  const declaration: Declaration<EffectKind> =
+    schema.declaredEffects === undefined
+      ? { channel: 'absent' }
+      : { channel: 'available', declared: schema.declaredEffects };
+  const declared = declaredSet(declaration);
+  const effects = new Set<EffectKind>(declared);
+  /** Whether failing to declare is evidence about this tool at all. */
+  const canDeclare = declarationOffered(declaration);
 
   // --- Effects inferred from how the tool names and describes itself ---------
   const prose = `${schema.name} ${schema.description}`;
@@ -152,7 +168,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
 
   // --- Targets and effects implied by the actual arguments ------------------
   const targets: Target[] = [];
-  let unbounded = false;
+  let isUnbounded = false;
 
   for (const [name, spec] of Object.entries(schema.parameters)) {
     const roleEffect = spec.role ? ROLE_EFFECTS[spec.role] : undefined;
@@ -183,41 +199,56 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     if (!spec.role) continue;
 
     for (const value of values) {
-      let escapes = false;
+      let confinement: Confinement = { status: 'undeclared' };
 
       if (spec.role === 'path' || spec.role === 'glob') {
         if (spec.confinedTo) {
           const check = escapesConfinementResolved(value, spec.confinedTo, options.resolver);
-          escapes = check.escapes;
-          if (check.escapes && check.via === 'filesystem') {
-            signals.push({
-              code: 'symlink_escape',
-              detail: `'${value}' stays inside '${spec.confinedTo}' as written, but resolves outside it on disk`,
-              source: name,
-            });
-          }
-          if (!check.resolved && options.resolver) {
+          if (check.escapes) {
+            confinement = { status: 'escaped', boundary: spec.confinedTo, via: check.via };
+            if (check.via === 'filesystem') {
+              signals.push({
+                code: 'symlink_escape',
+                detail: `'${value}' stays inside '${spec.confinedTo}' as written, but resolves outside it on disk`,
+                source: name,
+              });
+            }
+          } else if (!check.resolved && options.resolver) {
+            // The boundary exists but could not be tested. That is a third
+            // outcome, and it is not 'inside'.
+            confinement = {
+              status: 'unverifiable',
+              boundary: spec.confinedTo,
+              reason: 'path could not be resolved on disk',
+            };
             signals.push({
               code: 'unresolved_path',
               detail: `'${value}' could not be resolved on disk — confinement was checked by string only`,
               source: name,
             });
+          } else {
+            confinement = { status: 'inside', boundary: spec.confinedTo };
           }
         }
         if (spec.role === 'glob' || GLOB_CHARS.test(value)) {
-          unbounded = true;
+          isUnbounded = true;
           signals.push({
             code: 'unbounded_target_set',
             detail: `'${value}' is a pattern — the number of things it matches cannot be known from the call`,
             source: name,
           });
         }
-      } else if (spec.role === 'url') {
+      } else if (spec.role === 'url' && spec.confinedTo) {
         const host = hostOf(value);
-        if (spec.confinedTo && host && host !== spec.confinedTo.toLowerCase()) escapes = true;
+        confinement =
+          host === null
+            ? { status: 'unverifiable', boundary: spec.confinedTo, reason: 'no host could be parsed' }
+            : host === spec.confinedTo.toLowerCase()
+              ? { status: 'inside', boundary: spec.confinedTo }
+              : { status: 'escaped', boundary: spec.confinedTo, via: 'lexical' };
       }
 
-      if (escapes) {
+      if (isViolated(confinement)) {
         signals.push({
           code: 'confinement_escape',
           detail: `'${value}' resolves outside the declared boundary '${spec.confinedTo}'`,
@@ -225,12 +256,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
         });
       }
 
-      targets.push({
-        value,
-        role: spec.role,
-        escapesConfinement: escapes,
-        confined: Boolean(spec.confinedTo) && !escapes,
-      });
+      targets.push({ value, role: spec.role, confinement });
     }
   }
 
@@ -245,10 +271,10 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     // `null` means genuinely uncountable, and nothing else. A call with no
     // file targets at all counts zero of them — collapsing those two into the
     // same value made a payment read as touching an unbounded set of files.
-    affectedCount: unbounded ? null : targets.filter((t) => t.role === 'path').length,
+    affected: isUnbounded ? UNBOUNDED : exactly(targets.filter((t) => t.role === 'path').length),
     reversibility: deriveReversibility(effects),
     egress,
-    severity: deriveSeverity(effects, targets, unbounded, signals, declared, hasArbitraryCommand, canDeclare),
+    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare),
     signals,
   };
 }
@@ -272,7 +298,7 @@ function deriveReversibility(effects: Set<EffectKind>): ReversibilityName {
 function deriveSeverity(
   effects: Set<EffectKind>,
   targets: Target[],
-  unbounded: boolean,
+  isUnbounded: boolean,
   signals: Signal[],
   declared: Set<EffectKind>,
   hasArbitraryCommand: boolean,
@@ -287,9 +313,9 @@ function deriveSeverity(
   // a host, which the argument then matched, is a different thing from an
   // egress to wherever the argument happened to point.
   const egressTargets = targets.filter((t) => t.role === 'url');
-  const egressConfined = egressTargets.length > 0 && egressTargets.every((t) => t.confined);
+  const egressConfined = egressTargets.length > 0 && egressTargets.every((t) => isSatisfied(t.confinement));
   const recipients = targets.filter((t) => t.role === 'recipient');
-  const recipientsConfined = recipients.length > 0 && recipients.every((t) => t.confined);
+  const recipientsConfined = recipients.length > 0 && recipients.every((t) => isSatisfied(t.confinement));
 
   if (effects.has('read')) raise('low');
   if (effects.has('write')) raise('moderate');
@@ -303,14 +329,14 @@ function deriveSeverity(
   if (effects.has('network_egress')) raise(egressConfined ? 'moderate' : 'high');
   if (effects.has('message_send')) raise(recipientsConfined ? 'moderate' : 'high');
 
-  if (effects.has('delete')) raise(unbounded ? 'critical' : 'high');
+  if (effects.has('delete')) raise(isUnbounded ? 'critical' : 'high');
   if (effects.has('spend') || effects.has('credential_access')) raise('critical');
 
-  if (unbounded && effects.has('execute')) raise('critical');
+  if (isUnbounded && effects.has('execute')) raise('critical');
 
   // Escaping a boundary the tool declared for itself is the strongest signal
   // available: the tool stated a limit and the argument left it.
-  if (targets.some((t) => t.escapesConfinement)) raise('critical');
+  if (targets.some((t) => isViolated(t.confinement))) raise('critical');
 
   // An effect the tool did not admit to is worth one level on its own — the
   // schema was wrong about what this tool does, so the rest of it is suspect.
@@ -326,3 +352,6 @@ function deriveSeverity(
 }
 
 export const RANK = { SEVERITY, REVERSIBILITY };
+
+void countCovers; // re-exported for consumers via constraint.ts
+export type { Count };

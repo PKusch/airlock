@@ -43,7 +43,7 @@ for (const scenario of SCENARIOS) {
   const c = colourFor(facts.severity);
   console.log(
     `${DIM}   derived ${OFF}${c}${facts.severity.toUpperCase()}${OFF} · ${facts.effects.join(', ')} · ${facts.reversibility}` +
-      (facts.affectedCount === null ? ' · count unbounded' : ` · ${facts.affectedCount} item(s)`),
+      (facts.affected.kind === 'unbounded' ? ' · count unbounded' : ` · ${facts.affected.n} item(s)`),
   );
 
   for (const signal of facts.signals) {

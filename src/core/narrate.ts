@@ -1,4 +1,5 @@
 import type { DerivedFacts, ProposedConsequence, ToolCall } from './types.ts';
+import { isViolated } from './constraint.ts';
 
 /**
  * A narrator turns derived facts into human framing. It is deliberately the
@@ -33,7 +34,7 @@ export function factualProposal(facts: DerivedFacts): ProposedConsequence {
   headline: headlineFor(facts),
   severity: facts.severity,
   reversibility: facts.reversibility,
-  affectedCount: facts.affectedCount,
+  affectedCount: facts.affected.kind === 'unbounded' ? null : facts.affected.n,
   scopePaths: facts.targets.filter((t) => t.role === 'path' || t.role === 'glob').map((t) => t.value),
   egress: [...facts.egress],
     risks: facts.effects.map((e) => RISK_BY_EFFECT[e]).filter((r): r is string => Boolean(r)),
@@ -43,11 +44,11 @@ export function factualProposal(facts: DerivedFacts): ProposedConsequence {
 function headlineFor(facts: DerivedFacts): string {
   if (facts.effects.includes('spend')) return 'This moves money out of your account';
   if (facts.effects.includes('delete')) {
-    return facts.affectedCount === null
+    return facts.affected.kind === 'unbounded'
       ? 'This deletes an unknown number of files'
-      : `This deletes ${facts.affectedCount} file(s)`;
+      : `This deletes ${facts.affected.n} file(s)`;
   }
-  const escaped = facts.targets.find((t) => t.escapesConfinement);
+  const escaped = facts.targets.find((t) => isViolated(t.confinement));
   if (escaped) {
     return escaped.role === 'url'
       ? 'This sends your data to a destination the tool did not declare'

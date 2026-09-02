@@ -8,7 +8,7 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test          # 29 tests: attack suite, calibration, symlinks, MCP end-to-end
+npm test          # 36 tests: constraints, attack suite, calibration, symlinks, MCP
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run dev       # the UI, port 3200
@@ -129,6 +129,44 @@ parameters are still running unchecked.
 
 `6/6 held` in the attack report means no compromised narration reached the
 human. It does **not** mean the derivation saw everything the tool can do.
+
+## One bug, three times
+
+Three separate defects here were the same mistake: **a missing constraint scored
+as a satisfied one.** Zero file targets was stored as `null` and read as
+"uncountable", so a payment rendered as touching an unbounded set of files. A
+parameter that declared no boundary was counted as confined, so mail to an
+arbitrary external address read as constrained traffic and fell below the alarm
+threshold. And a protocol with no field for effects — MCP has none — was read as
+a tool declining to name them, which escalated every adapted tool and swamped
+the signal the check existed to carry.
+
+Every one came from a boolean. `escapes === false` cannot distinguish "inside the
+boundary" from "there was no boundary", and the collapse always falls in the
+permissive direction.
+
+Patching the three sites would have left the shape that produced them, so the
+checks now carry a type that can hold the third state (`src/core/constraint.ts`):
+
+```ts
+type Confinement =
+  | { status: 'inside';       boundary: string }
+  | { status: 'escaped';      boundary: string; via: 'lexical' | 'filesystem' }
+  | { status: 'undeclared' }                       // nothing was ever checked
+  | { status: 'unverifiable'; boundary: string; reason: string }
+```
+
+There is no `!violated` shortcut. The only route to a positive answer is
+`isSatisfied`, which is true for exactly one variant, and `test/constraint.test.ts`
+asserts that over every variant rather than at each call site. `Count` and
+`Declaration` get the same treatment: `unbounded` is a kind rather than a number,
+and "no declaration channel" is distinct from "declared nothing".
+
+It also surfaced something the booleans had hidden. Because "unchecked" is now a
+state rather than an absence, the consent card can say so — *"Nothing constrains
+where this can reach: 'partner@external.example' was not checked against any
+declared boundary"* — which is exactly what a person should know before
+approving, and was previously unsayable.
 
 ## Limits I would not paper over
 

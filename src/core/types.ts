@@ -1,3 +1,7 @@
+import type { Confinement, Count } from './constraint.ts';
+
+export type { Confinement, Count };
+
 /**
  * Airlock — consent for agent tool calls, where the consequence is derived
  * and verified rather than narrated.
@@ -72,15 +76,11 @@ export interface ToolCall {
 export interface Target {
   value: string;
   role: NonNullable<ParamSpec['role']>;
-  /** True when the value resolves outside the parameter's declared confinement. */
-  escapesConfinement: boolean;
   /**
-   * True only when the parameter declared a boundary AND this value is inside
-   * it. A parameter that declared no boundary is not thereby compliant with
-   * one — treating those as the same thing let an email to an arbitrary
-   * external address read as confined traffic.
+   * Three-state by construction. There is no boolean here because every past
+   * bug of this shape came from one — see `constraint.ts`.
    */
-  confined: boolean;
+  confinement: Confinement;
 }
 
 /** Why the deriver concluded something. Every fact carries its own provenance. */
@@ -97,8 +97,8 @@ export interface DerivedFacts {
   tool: string;
   effects: EffectKind[];
   targets: Target[];
-  /** `null` means the count cannot be bounded from the arguments alone. */
-  affectedCount: number | null;
+  /** `unbounded` is a kind, not a number. Zero targets is `exactly(0)`. */
+  affected: Count;
   reversibility: ReversibilityName;
   /** Destinations that leave the machine, if any. */
   egress: string[];
@@ -111,6 +111,8 @@ export interface DerivedFacts {
  * Free prose is confined to `headline` and `risks`, and even those are scanned.
  */
 export interface ProposedConsequence {
+  /** Model output arrives as JSON, so this stays a plain shape and is
+   *  converted at the verifier boundary. `null` means "I claim unbounded". */
   headline: string;
   severity: SeverityName;
   reversibility: ReversibilityName;

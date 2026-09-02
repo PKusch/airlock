@@ -9,6 +9,7 @@ import {
   type Verdict,
 } from './types.ts';
 import { normalisePath } from './derive.ts';
+import { countCovers, exactly, isUnchecked, isViolated, unbounded, type Count } from './constraint.ts';
 
 /**
  * The verifier is monotone in exactly one direction: a proposed consequence may
@@ -68,15 +69,17 @@ export function verifyConsequence(
     );
   }
 
-  if (facts.affectedCount === null) {
-    if (proposed.affectedCount !== null) {
-      reject(
-        'count_understated',
-        `Claimed exactly ${proposed.affectedCount}, but the target set is a pattern and cannot be bounded`,
-      );
-    }
-  } else if (proposed.affectedCount !== null && proposed.affectedCount < facts.affectedCount) {
-    reject('count_understated', `Claimed ${proposed.affectedCount}, derived ${facts.affectedCount}`);
+  // The claimed count is converted into the same three-state shape before it
+  // is compared, so "unbounded" can never be silently read as a number.
+  const claimedCount: Count =
+    proposed.affectedCount === null ? unbounded : exactly(proposed.affectedCount);
+  if (!countCovers(claimedCount, facts.affected)) {
+    reject(
+      'count_understated',
+      facts.affected.kind === 'unbounded'
+        ? `Claimed exactly ${proposed.affectedCount}, but the target set is a pattern and cannot be bounded`
+        : `Claimed ${proposed.affectedCount}, derived ${facts.affected.n}`,
+    );
   }
 
   // --- Completeness: nothing real may be left out ---------------------------
@@ -145,13 +148,13 @@ function factLines(facts: DerivedFacts): string[] {
   const paths = facts.targets.filter((t) => t.role === 'path' || t.role === 'glob');
   if (paths.length > 0) {
     lines.push(
-      facts.affectedCount === null
+      facts.affected.kind === 'unbounded'
         ? `It applies to everything matching ${paths.map((p) => `'${p.value}'`).join(' and ')} — the number of items is not knowable before it runs.`
-        : `It affects ${facts.affectedCount} item${facts.affectedCount === 1 ? '' : 's'}: ${paths.map((p) => `'${p.value}'`).join(', ')}.`,
+        : `It affects ${facts.affected.n} item${facts.affected.n === 1 ? '' : 's'}: ${paths.map((p) => `'${p.value}'`).join(', ')}.`,
     );
   }
 
-  const escapes = facts.targets.filter((t) => t.escapesConfinement);
+  const escapes = facts.targets.filter((t) => isViolated(t.confinement));
   if (escapes.length > 0) {
     lines.push(
       `It reaches outside the boundary the tool declares for itself: ${escapes.map((e) => `'${e.value}'`).join(', ')}.`,
@@ -160,6 +163,25 @@ function factLines(facts: DerivedFacts): string[] {
 
   if (facts.egress.length > 0) {
     lines.push(`Data leaves this machine, to: ${facts.egress.join(', ')}.`);
+  }
+
+  // Previously invisible. When confinement was a boolean, "no boundary was
+  // declared" and "the boundary held" were the same value, so there was
+  // nothing to tell the human. It is a distinct state now, so it is said out
+  // loud — an unchecked boundary is exactly the thing a person should know
+  // before approving.
+  // Only where a boundary would have meant something. An amount is not a
+  // place, so saying nothing constrains "where 4200 can reach" is nonsense.
+  const BOUNDABLE = new Set(['path', 'glob', 'url', 'recipient']);
+  const unchecked = facts.targets.filter(
+    (t) => BOUNDABLE.has(t.role) && isUnchecked(t.confinement),
+  );
+  if (unchecked.length > 0) {
+    lines.push(
+      `Nothing constrains where this can reach: ${unchecked
+        .map((t) => `'${t.value}'`)
+        .join(', ')} ${unchecked.length === 1 ? 'was' : 'were'} not checked against any declared boundary.`,
+    );
   }
 
   lines.push(REVERSIBILITY_PROSE[facts.reversibility]);

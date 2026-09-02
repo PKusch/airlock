@@ -8,6 +8,7 @@ import { TOOLS } from '../src/fixtures/tools.ts';
 import { SCENARIOS } from '../src/fixtures/calls.ts';
 import { BENIGN_CALLS, BENIGN_TOOLS } from '../src/fixtures/benign.ts';
 import { SEVERITY, type ProposedConsequence } from '../src/core/types.ts';
+import { isSatisfied, isUnchecked, isViolated } from '../src/core/constraint.ts';
 
 const factsFor = (id: string) => {
   const scenario = SCENARIOS.find((s) => s.id === id)!;
@@ -39,7 +40,7 @@ test('a delete named "cleanup" is derived as a delete', () => {
   const { facts } = factsFor('misnamed-delete');
   assert.ok(facts.effects.includes('delete'), 'delete inferred from tool text');
   assert.equal(facts.severity, 'critical', 'unbounded delete tops the scale');
-  assert.equal(facts.affectedCount, null, 'a pattern cannot be counted');
+  assert.equal(facts.affected.kind, 'unbounded', 'a pattern cannot be counted');
   assert.equal(facts.reversibility, 'irreversible');
   assert.ok(facts.signals.some((s) => s.code === 'undeclared_effect'));
 });
@@ -49,23 +50,22 @@ test('a call with no file targets counts zero of them, not "uncountable"', () =>
   // same value used for "this is a pattern, it cannot be bounded", so a payment
   // was rendered as touching an unknown number of files.
   const { facts } = factsFor('money');
-  assert.equal(facts.affectedCount, 0);
-  assert.notEqual(facts.affectedCount, null, 'zero targets is not the same as unbounded');
+  assert.deepEqual(facts.affected, { kind: 'exact', n: 0 });
 
-  const unbounded = factsFor('misnamed-delete').facts;
-  assert.equal(unbounded.affectedCount, null, 'a glob genuinely cannot be counted');
+  const globbed = factsFor('misnamed-delete').facts;
+  assert.equal(globbed.affected.kind, 'unbounded', 'a glob genuinely cannot be counted');
 });
 
 test('a path escaping its declared confinement is critical regardless of effect', () => {
   const { facts } = factsFor('confinement-escape');
-  assert.ok(facts.targets.some((t) => t.escapesConfinement));
+  assert.ok(facts.targets.some((t) => isViolated(t.confinement)));
   assert.equal(facts.severity, 'critical');
 });
 
 test('an off-host endpoint is recorded as egress', () => {
   const { facts } = factsFor('egress-redirect');
   assert.ok(facts.egress.includes('https://collector.exfil.example/v1/put'));
-  assert.ok(facts.targets.some((t) => t.role === 'url' && t.escapesConfinement));
+  assert.ok(facts.targets.some((t) => t.role === 'url' && isViolated(t.confinement)));
 });
 
 test('instruction-shaped arguments raise a signal', () => {
@@ -244,8 +244,9 @@ test('an undeclared boundary is not a satisfied boundary', () => {
   // address read as routine traffic and dropped below the alarm threshold.
   const { facts } = factsFor('injected-argument');
   const recipient = facts.targets.find((t) => t.role === 'recipient')!;
-  assert.equal(recipient.escapesConfinement, false, 'nothing to escape');
-  assert.equal(recipient.confined, false, 'but nothing confined it either');
+  assert.equal(isViolated(recipient.confinement), false, 'nothing to escape');
+  assert.equal(isSatisfied(recipient.confinement), false, 'but nothing confined it either');
+  assert.ok(isUnchecked(recipient.confinement), 'the state is "never checked"');
   assert.ok(SEVERITY[facts.severity] >= ALARM);
 });
 
@@ -253,6 +254,6 @@ test('a confined, declared effect does not escalate', () => {
   const weather = BENIGN_CALLS.find((c) => c.tool === 'get_weather')!;
   const facts = deriveFacts(BENIGN_TOOLS.get_weather, weather);
   assert.ok(facts.effects.includes('network_egress'));
-  assert.ok(facts.targets.find((t) => t.role === 'url')!.confined);
+  assert.ok(isSatisfied(facts.targets.find((t) => t.role === 'url')!.confinement));
   assert.ok(SEVERITY[facts.severity] < ALARM, 'egress inside a declared host is routine');
 });
