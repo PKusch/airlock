@@ -18,6 +18,7 @@ import {
   type ParamSpec,
   type ReversibilityName,
   type SeverityName,
+  type EffectEvidence,
   type Signal,
   type Target,
   type ToolCall,
@@ -30,20 +31,86 @@ import {
  * `declaredEffects` is a floor we add to, never a ceiling we trust.
  */
 
-/** Words that betray an effect the tool may not have declared. */
-const EFFECT_TELLS: Array<[EffectKind, RegExp]> = [
-  // Matched as stems (`clean` catches `clearing`, `cleanup`, `cleaned`), because
-  // an effect wrongly inferred costs a louder prompt while an effect missed
-  // costs the user the thing the prompt existed to prevent.
-  ['delete', /\b(delete|remov|rm|purge|wipe|eras|destroy|drop|prune|clean|clear|truncat)\w*/i],
-  ['write', /\b(write|creat|updat|modif|edit|renam|mov|overwrit|sav|patch)\w*/i],
-  ['execute', /\b(exec|run|spawn|shell|command|script|eval)\w*/i],
-  ['network_egress', /\b(upload|post|fetch|http|url|webhook|sync|publish|export)\w*/i],
-  ['message_send', /\b(send|sent|email|mail|message|dm|notif|repl|sms|slack)\w*/i],
-  ['spend', /\b(pay|payment|charg|purchas|buy|transfer|invoic|refund|checkout)\w*/i],
-  ['credential_access', /\b(secret|token|credential|password|api[_ -]?key|keychain|auth)\w*/i],
-  ['read', /\b(read|list|get|search|find|quer|inspect|show)\w*/i],
+/**
+ * Effect inference, rebuilt after auditing 36 real MCP tool definitions.
+ *
+ * The first version matched word stems anywhere in the name or description,
+ * which inferred `delete` for `list_directory` from the word "clearly" and
+ * `message_send` for `edit_file` from "replaces". Loose stems over a real
+ * corpus produce noise, and noise in a consent gate is indistinguishable from
+ * a broken gate.
+ *
+ * MCP tool names are overwhelmingly `verb_noun` — `read_file`,
+ * `delete_entities`, `create_directory`. The leading verb is a far better
+ * signal than a substring anywhere, and it is not fooled by nouns:
+ * `get-annotated-message` is a `get`, whatever the rest of it says.
+ */
+const VERB_EFFECTS: Record<string, EffectKind> = {
+  get: 'read', read: 'read', list: 'read', search: 'read', find: 'read',
+  fetch: 'read', show: 'read', describe: 'read', query: 'read', inspect: 'read',
+  open: 'read', view: 'read', count: 'read', check: 'read', tree: 'read',
+
+  write: 'write', create: 'write', update: 'write', edit: 'write', modify: 'write',
+  rename: 'write', move: 'write', save: 'write', patch: 'write', append: 'write',
+  set: 'write', add: 'write', insert: 'write', copy: 'write', make: 'write',
+  gzip: 'write', compress: 'write', format: 'write', toggle: 'write',
+
+  delete: 'delete', remove: 'delete', rm: 'delete', purge: 'delete', wipe: 'delete',
+  erase: 'delete', destroy: 'delete', drop: 'delete', prune: 'delete',
+  clear: 'delete', clean: 'delete', cleanup: 'delete', truncate: 'delete',
+
+  run: 'execute', exec: 'execute', execute: 'execute', spawn: 'execute',
+  invoke: 'execute', trigger: 'execute', eval: 'execute', shell: 'execute',
+
+  upload: 'network_egress', sync: 'network_egress', publish: 'network_egress',
+  export: 'network_egress', push: 'network_egress', post: 'network_egress',
+
+  send: 'message_send', email: 'message_send', mail: 'message_send',
+  notify: 'message_send', reply: 'message_send', message: 'message_send',
+
+  pay: 'spend', charge: 'spend', purchase: 'spend', buy: 'spend',
+  transfer: 'spend', refund: 'spend', checkout: 'spend',
+};
+
+/**
+ * Verbs that are safe to recognise anywhere in a tool name because they are
+ * effectively never used as nouns in an API surface.
+ */
+const UNAMBIGUOUS_LATER_VERBS = new Set([
+  'delete', 'remove', 'purge', 'wipe', 'erase', 'destroy', 'prune', 'truncate',
+  'cleanup', 'pay', 'charge', 'refund',
+]);
+
+/**
+ * Nouns that make a tool sensitive regardless of its verb. `get-env` is a
+ * `get`, and environment variables are where API keys live.
+ */
+const SENSITIVE_NOUNS: Array<[EffectKind, RegExp]> = [
+  ['credential_access', /^(env|secret|secrets|token|tokens|credential|credentials|password|passwords|keychain|apikey)$/i],
 ];
+
+/**
+ * Description matching, kept deliberately narrow: explicit verb forms only.
+ * A description is weaker evidence than a name and gets to *add* an effect,
+ * never to be the sole basis for one that the name contradicts.
+ */
+const DESCRIPTION_TELLS: Array<[EffectKind, RegExp]> = [
+  ['delete', /\b(deletes?|deleting|removes?|removing|erases?|purges?|wipes?|destroys?|permanently remove)\b/i],
+  ['execute', /\b(executes?|runs? (?:a )?(?:command|script|shell)|spawns?)\b/i],
+  ['network_egress', /\b(uploads?|sends? (?:it |them )?to (?:a )?(?:server|endpoint|url)|publishes?|transmits?)\b/i],
+  ['message_send', /\b(sends? (?:an? )?(?:email|message|notification)|emails?|notifies)\b/i],
+  ['spend', /\b(charges?|pays?|transfers? funds|makes? a payment)\b/i],
+  ['credential_access', /\b(api key|access token|credentials?|password|environment variables?)\b/i],
+];
+
+/** Split `get-annotated-message`, `readTextFile`, `read_file` into tokens. */
+export function tokenise(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((t) => t.toLowerCase());
+}
 
 /** A parameter's role implies an effect regardless of what the tool says. */
 const ROLE_EFFECTS: Partial<Record<NonNullable<ParamSpec['role']>, EffectKind>> = {
@@ -153,17 +220,47 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
   const canDeclare = declarationOffered(declaration);
 
   // --- Effects inferred from how the tool names and describes itself ---------
-  const prose = `${schema.name} ${schema.description}`;
-  for (const [effect, tell] of EFFECT_TELLS) {
-    if (!tell.test(prose)) continue;
+  const effectEvidence: EffectEvidence[] = [];
+  const addEffect = (effect: EffectKind, matched: string, source: string) => {
     effects.add(effect);
+    effectEvidence.push({ effect, matched, source });
     if (canDeclare && !declared.has(effect)) {
       signals.push({
         code: 'undeclared_effect',
-        detail: `Tool text implies '${effect}' but the schema does not declare it`,
+        detail: `'${matched}' in the ${source} implies '${effect}', which the schema does not declare`,
         source: 'tool',
       });
     }
+  };
+
+  // The leading verb of the tool name, which is where MCP puts the action.
+  const tokens = tokenise(schema.name);
+  const verbEffect = tokens.length > 0 ? VERB_EFFECTS[tokens[0]] : undefined;
+  if (verbEffect) addEffect(verbEffect, tokens[0], 'tool name');
+
+  // A later token can still name an action, but only for verbs that are almost
+  // never nouns. `get-annotated-message` is a `get` whose second token is the
+  // noun "message"; treating that as a send is how the audit found this rule
+  // over-firing on real schemas. `delete`, `purge` and `wipe` carry no such
+  // ambiguity.
+  for (const token of tokens.slice(1)) {
+    const later = VERB_EFFECTS[token];
+    if (later && !effects.has(later) && UNAMBIGUOUS_LATER_VERBS.has(token)) {
+      addEffect(later, token, 'tool name');
+    }
+    for (const [effect, tell] of SENSITIVE_NOUNS) {
+      if (tell.test(token) && !effects.has(effect)) addEffect(effect, token, 'tool name');
+    }
+  }
+  for (const [effect, tell] of SENSITIVE_NOUNS) {
+    if (tokens.length > 0 && tell.test(tokens[0]) && !effects.has(effect)) {
+      addEffect(effect, tokens[0], 'tool name');
+    }
+  }
+
+  for (const [effect, tell] of DESCRIPTION_TELLS) {
+    const hit = tell.exec(schema.description);
+    if (hit && !effects.has(effect)) addEffect(effect, hit[0], 'description');
   }
 
   // --- Targets and effects implied by the actual arguments ------------------
@@ -172,16 +269,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
 
   for (const [name, spec] of Object.entries(schema.parameters)) {
     const roleEffect = spec.role ? ROLE_EFFECTS[spec.role] : undefined;
-    if (roleEffect) {
-      effects.add(roleEffect);
-      if (canDeclare && !declared.has(roleEffect)) {
-        signals.push({
-          code: 'undeclared_effect',
-          detail: `Parameter role '${spec.role}' implies '${roleEffect}', undeclared by the tool`,
-          source: name,
-        });
-      }
-    }
+    if (roleEffect) addEffect(roleEffect, spec.role!, `parameter '${name}'`);
 
     const raw = call.args[name];
     if (raw === undefined || raw === null) continue;
@@ -275,6 +363,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     reversibility: deriveReversibility(effects),
     egress,
     severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare),
+    effectEvidence,
     signals,
   };
 }

@@ -8,9 +8,11 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test          # 36 tests: constraints, attack suite, calibration, symlinks, MCP
+npm test          # 45 tests: constraints, attacks, calibration, symlinks, MCP, real corpus
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
+npm run audit     # against 36 real MCP tool definitions
+npm run introspect # re-pull those definitions from the reference servers
 npm run dev       # the UI, port 3200
 
 # wrap a real MCP server
@@ -116,6 +118,55 @@ asserting boundaries the protocol gives tools no way to state.** That is what
 `AIRLOCK_CONFINE` is for, and `adaptationGaps()` reports exactly which
 parameters are still running unchecked.
 
+### Against a corpus I did not write
+
+Everything above is measured on fixtures written by the same person who wrote
+the inference rules, which means it can only confirm them. So `npm run
+introspect` pulls the live tool definitions from the MCP reference servers —
+filesystem, memory and everything, **36 tools, none of them mine** — and
+`npm run audit` scores the deriver against them, with ground truth labelled
+from what each tool does.
+
+| | |
+|:--|:--|
+| Tools that warrant stopping a person | 5 of 36 |
+| Caught | **5/5** |
+| False alarms | **0/31** |
+
+It reached that after fixing four defects the fixture corpus could never have
+surfaced, because each needed prose somebody else wrote:
+
+- `list_directory` inferred **delete** — the stem `clear` matched the word
+  **"clearly"** in its description.
+- `edit_file` inferred **message_send** — the stem `repl` matched
+  **"replaces"**.
+- `simulate-research-query` gave its `topic` parameter the **recipient** role,
+  because the prefix `^to` matches **"to"pic**.
+- `get-annotated-message` inferred **message_send** from the noun "message" in
+  its own name.
+
+The first three were loose stem matching; the fourth was reading a noun as a
+verb. Both are fixed structurally rather than by patching the words: effects
+now come from the **leading verb** of the tool name — MCP names are
+overwhelmingly `verb_noun`, and `get-annotated-message` is a `get` whatever
+follows it — and parameter roles match on **tokens** rather than prefixes,
+which incidentally started catching `excludePatterns` as a glob.
+
+Two of the five true positives are worth naming, because a name-only reading
+misses both: `get-env` is scored `critical` for credential access, since
+environment variables are where API keys live; and `gzip-file-as-resource`
+fetches an arbitrary remote URL through a parameter called `data`, caught only
+because its schema says `format: "uri"`.
+
+**The honest caveat:** I labelled the ground truth, and I fixed the rules after
+seeing which tools failed. That is not an independent evaluation. What it is —
+and what the fixture corpus could not be — is a test against schemas and prose
+nobody here wrote, which is where all four defects came from.
+
+Every inferred effect now records the exact text that produced it
+(`effectEvidence`), so an inference can be audited rather than taken on trust.
+A test asserts that no effect is ever inferred without it.
+
 ## What is verified, and what isn't
 
 | Claim | Status |
@@ -188,11 +239,14 @@ approving, and was previously unsayable.
   suite runs against a *fully compromised* narrator, which is a strictly
   stronger test than a live model that happens to behave. But it means the
   quality of real narration is unmeasured, and I am not claiming it.
-- **MCP roles are inferred from parameter names.** `path`, `to`, `endpoint`,
-  `command` and friends are matched by name, format and description. A tool that
-  names its file parameter `subject` gets no role and is treated as opaque data.
-  `adaptationGaps()` reports every parameter in that state rather than letting it
-  pass quietly.
+- **Only 37% of real parameters get a role.** Measured across the 36-tool
+  corpus: 18 of 49. The rest — `edit_file.edits`, `add_observations.observations`,
+  `write_file.content` — are treated as opaque data, so nothing about them is
+  checked. `adaptationGaps()` reports every one rather than letting it pass
+  quietly, but the gate is blind to what is inside them.
+- **Effects are inferred from a verb vocabulary.** A tool whose leading verb is
+  not in `VERB_EFFECTS` and whose description avoids the tell patterns is scored
+  on its parameters alone. The vocabulary is finite and English.
 - **The proxy's default is refusal, not approval.** There is no human channel in
   a stdio pipe, so anything at or above the threshold is returned to the client
   as an error carrying the consent card. A host with a real approval UI passes

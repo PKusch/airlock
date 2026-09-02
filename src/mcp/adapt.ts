@@ -22,25 +22,44 @@ export interface McpToolDefinition {
   };
 }
 
-/** Parameter names that betray a role. Ordered — first match wins. */
-const ROLE_TELLS: Array<[NonNullable<ParamSpec['role']>, RegExp]> = [
-  ['secret', /^(token|secret|api[_-]?key|password|credential|auth)/i],
-  ['command', /^(command|cmd|script|shell|exec|code)/i],
-  ['amount', /^(amount|total|price|sum|value_cents|cost)/i],
-  ['recipient', /^(to|recipient|recipients|email|address|channel|chat_id|phone)/i],
-  ['url', /^(url|uri|endpoint|host|webhook|link|href)/i],
-  ['glob', /^(pattern|glob|match|filter_pattern)/i],
-  ['path', /(^|_)(path|file|filepath|filename|dir|directory|folder|source|destination|target)s?$/i],
+/**
+ * Parameter roles, matched on *tokens* rather than prefixes.
+ *
+ * The prefix version inferred `recipient` for a parameter named `topic`,
+ * because `^to` matches it. Splitting `excludePatterns` and `topic` into
+ * tokens first fixes that class outright, and picks up `excludePatterns` as a
+ * glob, which the prefix version missed.
+ */
+const ROLE_TOKENS: Array<[NonNullable<ParamSpec['role']>, Set<string>]> = [
+  ['secret', new Set(['token', 'tokens', 'secret', 'secrets', 'apikey', 'password', 'credential', 'credentials', 'auth'])],
+  ['command', new Set(['command', 'cmd', 'script', 'shell', 'exec', 'argv'])],
+  ['amount', new Set(['amount', 'price', 'cost', 'total', 'fee'])],
+  ['recipient', new Set(['to', 'recipient', 'recipients', 'mailto', 'addressee', 'chatid'])],
+  ['url', new Set(['url', 'urls', 'uri', 'endpoint', 'webhook', 'href'])],
+  ['glob', new Set(['pattern', 'patterns', 'glob', 'globs', 'wildcard'])],
+  ['path', new Set(['path', 'paths', 'file', 'files', 'filepath', 'filename', 'dir', 'dirs', 'directory', 'directories', 'folder', 'source', 'destination'])],
 ];
 
+/** Split `excludePatterns`, `chat_id`, `to` into lowercase tokens. */
+export function tokenise(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((t) => t.toLowerCase());
+}
+
 function inferRole(name: string, prop: { description?: string; format?: string }): ParamSpec['role'] {
-  for (const [role, tell] of ROLE_TELLS) {
-    if (tell.test(name)) return role;
+  const tokens = new Set(tokenise(name));
+  for (const [role, vocabulary] of ROLE_TOKENS) {
+    for (const token of tokens) {
+      if (vocabulary.has(token)) return role;
+    }
   }
   if (prop.format === 'uri' || prop.format === 'url') return 'url';
   if (prop.format === 'email') return 'recipient';
   // A description is weaker evidence than a name, so it is consulted last.
-  if (prop.description && /\bglob|wildcard|pattern\b/i.test(prop.description)) return 'glob';
+  if (prop.description && /\b(glob|wildcard) pattern\b/i.test(prop.description)) return 'glob';
   if (prop.description && /\b(file|directory|folder) path\b/i.test(prop.description)) return 'path';
   return undefined;
 }

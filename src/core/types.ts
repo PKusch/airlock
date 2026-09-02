@@ -104,6 +104,20 @@ export interface DerivedFacts {
   egress: string[];
   severity: SeverityName;
   signals: Signal[];
+  /**
+   * For each effect that was inferred rather than declared, the exact text that
+   * produced it. An inference a person cannot audit is an assertion, and this
+   * gate has no business making assertions it will not show its work for.
+   */
+  effectEvidence: EffectEvidence[];
+}
+
+export interface EffectEvidence {
+  effect: EffectKind;
+  /** The matched substring, verbatim. */
+  matched: string;
+  /** Where it was found: `tool name`, `description`, or a parameter role. */
+  source: string;
 }
 
 /**

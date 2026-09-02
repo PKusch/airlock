@@ -9,7 +9,9 @@
     "lint": "tsc --noEmit",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "attack": "node --experimental-strip-types test/attack-report.ts",
-    "calibrate": "node --experimental-strip-types test/calibrate.ts"
+    "calibrate": "node --experimental-strip-types test/calibrate.ts",
+    "audit": "node --experimental-strip-types test/audit-real.ts",
+    "introspect": "node scripts/introspect.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -17,12 +19,15 @@
     "lucide-react": "^0.546.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server-everything": "^2025.8.18",
+    "@modelcontextprotocol/server-filesystem": "^2025.8.21",
+    "@modelcontextprotocol/server-memory": "^2025.9.25",
+    "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.4",
     "tailwindcss": "^4.1.14",
-    "@tailwindcss/vite": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   }
