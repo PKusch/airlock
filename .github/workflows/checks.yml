@@ -1,0 +1,42 @@
+name: checks
+
+# The README promises 45 passing tests and an MIT license. A promise nobody runs
+# is a promise that quietly rots. This gate runs the type check and the full test
+# suite on every push and pull request, so the claims in the README stay true by
+# construction rather than by good intentions.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The tests run TypeScript directly via --experimental-strip-types, so they
+        # must keep working on both the current LTS and the latest release.
+        node: ["22.x", "24.x"]
+    name: node ${{ matrix.node }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Does the project actually type-check? `lint` is tsc --noEmit.
+      - name: Type check
+        run: npm run lint
+
+      # The 45 tests the README advertises: constraints, attacks, calibration,
+      # symlinks, MCP proxy, and the real-corpus audit.
+      - name: Tests
+        run: npm test
