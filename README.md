@@ -20,6 +20,9 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
+The type check and all 45 tests run in CI on every push and pull request, across
+Node 22 and 24, so the claims below are gated rather than asserted.
+
 ---
 
 ## The problem with describing a tool call
@@ -282,4 +285,4 @@ test/mcp.test.ts         end to end through a child process over stdio
 
 ## License
 
-MIT.
+MIT — see [LICENSE](LICENSE).
