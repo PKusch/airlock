@@ -16,6 +16,7 @@ import {
   type DerivedFacts,
   type EffectKind,
   type ParamSpec,
+  type Recognition,
   type ReversibilityName,
   type SeverityName,
   type EffectEvidence,
@@ -351,6 +352,23 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
   const egress = targets.filter((t) => t.role === 'url' || t.role === 'recipient').map((t) => t.value);
   const hasArbitraryCommand = targets.some((t) => t.role === 'command');
 
+  // Nothing declared, nothing in the name, nothing in the description, no
+  // parameter role: the deriver has no idea what this tool does. That used to
+  // fall through as an empty effect set and a severity of `none`, which is
+  // what `ping` gets — and also what `retire_entities` gets. The vocabulary
+  // cannot tell them apart, so it must not pretend to.
+  const recognition: Recognition =
+    effects.size > 0
+      ? { status: 'recognised' }
+      : { status: 'unrecognised', verb: tokens[0] ?? '' };
+  if (recognition.status === 'unrecognised') {
+    signals.push({
+      code: 'unrecognised_action',
+      detail: `'${schema.name}' names no action the deriver recognises, and nothing else in its definition says what it does`,
+      source: 'tool',
+    });
+  }
+
   return {
     callId: call.id,
     tool: call.tool,
@@ -362,8 +380,9 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     affected: isUnbounded ? UNBOUNDED : exactly(targets.filter((t) => t.role === 'path').length),
     reversibility: deriveReversibility(effects),
     egress,
-    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare),
+    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition),
     effectEvidence,
+    recognition,
     signals,
   };
 }
@@ -392,11 +411,21 @@ function deriveSeverity(
   declared: Set<EffectKind>,
   hasArbitraryCommand: boolean,
   canDeclare: boolean,
+  recognition: Recognition,
 ): SeverityName {
   let rank: number = SEVERITY.none;
   const raise = (to: SeverityName) => {
     rank = Math.max(rank, SEVERITY[to]);
   };
+
+  // Not knowing what a tool does is not the same as knowing it does nothing.
+  // `moderate` is the floor for a write, and an unrecognised tool may well be
+  // one; it is deliberately below the default alarm threshold, because on the
+  // real corpus every unrecognised verb belongs to a harmless tool, and a gate
+  // that stops for `echo` is a gate people learn to click through. The card
+  // says so out loud, and an operator who would rather stop can lower the
+  // threshold or declare the effect.
+  if (recognition.status === 'unrecognised') raise('moderate');
 
   // Whether a destination was checkable at all. An egress the tool confined to
   // a host, which the argument then matched, is a different thing from an

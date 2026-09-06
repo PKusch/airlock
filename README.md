@@ -8,10 +8,11 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test          # 45 tests: constraints, attacks, calibration, symlinks, MCP, real corpus
+npm test          # 51 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
+npm run unrecognised # 22 ordinarily-named tools whose verbs the vocabulary does not know
 npm run introspect # re-pull those definitions from the reference servers
 npm run dev       # the UI, port 3200
 
@@ -20,7 +21,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 45 tests run in CI on every push and pull request, across
+The type check and all 51 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -170,6 +171,51 @@ Every inferred effect now records the exact text that produced it
 (`effectEvidence`), so an inference can be audited rather than taken on trust.
 A test asserts that no effect is ever inferred without it.
 
+### What the vocabulary cannot see
+
+Effects are inferred from a verb vocabulary, and a vocabulary is finite. The
+limits section has always said so; this measures it. `corpus/unrecognised-verbs.json`
+holds 22 tools named the way an ordinary API author names things —
+`retire_entities`, `apply_migration`, `place_order`, `rotate_keys` — none of
+whose leading verbs the deriver knows. No adversary was needed. These are just
+words. Eighteen of them do something consequential; four are harmless.
+
+| | |
+|:--|:--|
+| Consequential tools with an unrecognised verb | 18 |
+| Caught anyway, by a description phrase or a parameter role | **4** — `forward_thread`, `dump_environment`, `submit_expense`, `archive_remote_resource` |
+| Missed | **14** |
+| Harmless tools with an unrecognised verb | 4, all equally unrecognised |
+
+Before this was measured, the fourteen misses and the four harmless tools came
+out identical: an empty effect set and a severity of `none`. That is the same
+shape as the three boolean bugs described further down, in a fourth form —
+**nothing inferred was being read as nothing happens.** `retire_entities`
+scored exactly like `ping`, and the consent card for either read "This ." with
+the verb missing.
+
+So the deriver now carries a third state. `recognition` is `recognised` or
+`unrecognised`; an unrecognised tool is floored at `moderate`, raises an
+`unrecognised_action` signal, and the card leads with it — *"What this does is
+not known: 'retire_entities' names no action Airlock recognises, and nothing
+else in its definition says. Treat the list below as incomplete."* The reference
+narrator stops calling it a read.
+
+What this does **not** do is catch the fourteen. `moderate` sits below the
+default alarm threshold on purpose: the three unrecognised verbs in the real
+corpus (`directory_tree`, `echo`, `simulate-research-query`) all belong to
+harmless tools, and stopping a person for `echo` is how a gate gets clicked
+through. The vocabulary cannot tell `retire_entities` from `translate_text`,
+and the honest move is to say so on the card rather than guess in either
+direction. An operator who would rather stop can set the gate's `threshold` to
+`moderate`, at the cost of stopping on those three. The actual fix is the one
+the limits section names: a declaration channel the protocol does not have.
+
+The split is pinned by `test/unrecognised.test.ts`, so a change to the
+vocabulary that moves any number in the table fails CI rather than drifting
+away from this paragraph. The corpus, like the fixtures, is mine — it can show
+the vocabulary failing, and it cannot show it succeeding.
+
 ## What is verified, and what isn't
 
 | Claim | Status |
@@ -179,7 +225,8 @@ A test asserts that no effect is ever inferred without it.
 | A path argument resolves outside the tool's declared directory | **Verified in code**, lexically (see limits). |
 | A symlink inside a confined directory pointing out of it | **Verified against a real filesystem** when a resolver is supplied; string-only otherwise, and the human is told which. |
 | The derived severity is the *correct* severity | **Not verified.** The ladder is measured for alarm rate, not for whether `critical` means what a person would mean by it. |
-| The effect inference caught everything the tool really does | **Not verified.** It is lexical (see limits). |
+| The effect inference caught everything the tool really does | **Not verified, and measured to fail.** 14 of 18 ordinarily-named consequential tools with a verb outside the vocabulary are missed. A miss is now reported as *unrecognised* rather than scored as harmless, but it is still a miss. |
+| A tool the deriver cannot place is never scored as harmless | **Verified in code.** Empty inference is a named state with a `moderate` floor, and a test holds it over 22 such tools. |
 
 `6/6 held` in the attack report means no compromised narration reached the
 human. It does **not** mean the derivation saw everything the tool can do.
@@ -228,9 +275,9 @@ approving, and was previously unsayable.
   name and description plus parameter roles. It over-fires by design — a false
   effect costs a louder prompt, a missed one costs the user the thing the prompt
   existed to prevent. But a tool that describes itself in words outside the list
-  (`harmonise_state`, which deletes) is caught only if its parameters give it
-  away. Real capability annotations, or a signature over a reviewed manifest,
-  would be the actual fix.
+  (`retire_entities`, which deletes) is caught only if its parameters give it
+  away, and that is measured above at 14 misses in 18. Real capability
+  annotations, or a signature over a reviewed manifest, would be the actual fix.
 - **Path confinement needs a resolver to be sound.** With `nodeResolver`
   supplied, symlink escapes are caught against a real filesystem and an
   unresolvable path is reported as *unknown* rather than safe. Without one — in
@@ -249,7 +296,9 @@ approving, and was previously unsayable.
   quietly, but the gate is blind to what is inside them.
 - **Effects are inferred from a verb vocabulary.** A tool whose leading verb is
   not in `VERB_EFFECTS` and whose description avoids the tell patterns is scored
-  on its parameters alone. The vocabulary is finite and English.
+  on its parameters alone, and if those say nothing either it is reported as
+  *unrecognised* at `moderate` — told to the person, not stopped for. The
+  vocabulary is finite and English.
 - **The proxy's default is refusal, not approval.** There is no human channel in
   a stdio pipe, so anything at or above the threshold is returned to the client
   as an error carrying the consent card. A host with a real approval UI passes
@@ -278,7 +327,9 @@ src/mcp/adapt.ts         MCP definitions → something derivable, and what was l
 src/mcp/gate.ts          the guard: derive → narrate → verify → render
 src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
 src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
+corpus/                  36 real MCP definitions with ground truth; 22 tools the vocabulary does not know
 test/gate.test.ts        attack suite + calibration
+test/unrecognised.test.ts what the vocabulary misses, pinned
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
 ```

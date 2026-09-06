@@ -110,7 +110,24 @@ export interface DerivedFacts {
    * gate has no business making assertions it will not show its work for.
    */
   effectEvidence: EffectEvidence[];
+  /**
+   * Whether the deriver understood what this tool does at all. An empty
+   * `effects` used to be read as "does nothing" and scored `none` — the same
+   * collapse as `escapes === false`, in the same permissive direction. A tool
+   * the vocabulary does not know is a third state, and it is named here.
+   */
+  recognition: Recognition;
 }
+
+/**
+ * Three sources can tell the deriver what a tool does: a declaration, its own
+ * text, or the roles of its parameters. When none of them says anything, the
+ * tool is not thereby harmless; it is unrecognised, and the leading verb that
+ * failed to match is recorded so a person can judge it for themselves.
+ */
+export type Recognition =
+  | { status: 'recognised' }
+  | { status: 'unrecognised'; verb: string };
 
 export interface EffectEvidence {
   effect: EffectKind;

@@ -1,0 +1,159 @@
+{
+  "_comment": "Tools whose leading verb is outside VERB_EFFECTS, named the way an ordinary API author would name them. No adversary is needed to leave a finite vocabulary. Ground truth is the effect each tool really has; 'expected' records what the deriver currently makes of it, so a change in coverage fails a test rather than drifting.",
+  "tools": [
+    {
+      "name": "retire_entities",
+      "description": "Retires entities and their relations from the knowledge graph.",
+      "inputSchema": { "type": "object", "properties": { "entityNames": { "type": "array", "items": { "type": "string" } } } },
+      "effect": "delete",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "forget_observations",
+      "description": "Forgets the listed observations for an entity.",
+      "inputSchema": { "type": "object", "properties": { "entityName": { "type": "string" }, "observations": { "type": "array", "items": { "type": "string" } } } },
+      "effect": "delete",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "reset_workspace",
+      "description": "Restores the workspace to a pristine checkout.",
+      "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } } },
+      "effect": "delete",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "flush_cache",
+      "description": "Flushes the cache for the given service.",
+      "inputSchema": { "type": "object", "properties": { "service": { "type": "string" } } },
+      "effect": "delete",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "expire_sessions",
+      "description": "Ends every active session for the account.",
+      "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" } } },
+      "effect": "delete",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "apply_migration",
+      "description": "Applies a schema migration to the production database.",
+      "inputSchema": { "type": "object", "properties": { "migration": { "type": "string" } } },
+      "effect": "write",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "revoke_access",
+      "description": "Revokes a user's access to the workspace.",
+      "inputSchema": { "type": "object", "properties": { "userId": { "type": "string" } } },
+      "effect": "write",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "launch_job",
+      "description": "Starts a batch job on the cluster with the given arguments.",
+      "inputSchema": { "type": "object", "properties": { "job": { "type": "string" }, "arguments": { "type": "array", "items": { "type": "string" } } } },
+      "effect": "execute",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "deploy_service",
+      "description": "Rolls out the current build to the production fleet.",
+      "inputSchema": { "type": "object", "properties": { "service": { "type": "string" }, "version": { "type": "string" } } },
+      "effect": "execute",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "share_document",
+      "description": "Makes a document viewable by an outside organisation.",
+      "inputSchema": { "type": "object", "properties": { "documentId": { "type": "string" }, "organisation": { "type": "string" } } },
+      "effect": "network_egress",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "mirror_repository",
+      "description": "Mirrors the repository to a second host.",
+      "inputSchema": { "type": "object", "properties": { "host": { "type": "string" } } },
+      "effect": "network_egress",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "forward_thread",
+      "description": "Forwards an email thread to another address.",
+      "inputSchema": { "type": "object", "properties": { "threadId": { "type": "string" }, "address": { "type": "string" } } },
+      "effect": "message_send",
+      "expected": "caught"
+    },
+    {
+      "name": "place_order",
+      "description": "Places an order for a stock item and bills the account on file.",
+      "inputSchema": { "type": "object", "properties": { "sku": { "type": "string" }, "quantity": { "type": "integer" } } },
+      "effect": "spend",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "approve_request",
+      "description": "Marks a pending request as approved, which releases the held funds.",
+      "inputSchema": { "type": "object", "properties": { "requestId": { "type": "string" } } },
+      "effect": "spend",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "submit_expense",
+      "description": "Submits an expense claim for reimbursement.",
+      "inputSchema": { "type": "object", "properties": { "amount": { "type": "number" }, "description": { "type": "string" } } },
+      "effect": "spend",
+      "expected": "caught"
+    },
+    {
+      "name": "rotate_keys",
+      "description": "Rotates the signing keys for the service.",
+      "inputSchema": { "type": "object", "properties": { "service": { "type": "string" } } },
+      "effect": "credential_access",
+      "expected": "unrecognised"
+    },
+    {
+      "name": "dump_environment",
+      "description": "Prints every environment variable of the host process.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "effect": "credential_access",
+      "expected": "caught"
+    },
+    {
+      "name": "archive_remote_resource",
+      "description": "Compresses a remote resource and stores it.",
+      "inputSchema": { "type": "object", "properties": { "data": { "type": "string", "format": "uri" }, "name": { "type": "string" } } },
+      "effect": "network_egress",
+      "expected": "caught"
+    },
+    {
+      "name": "ping",
+      "description": "Reports whether the service is reachable.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "effect": null,
+      "expected": "unrecognised"
+    },
+    {
+      "name": "translate_text",
+      "description": "Translates text between two languages.",
+      "inputSchema": { "type": "object", "properties": { "text": { "type": "string" }, "language": { "type": "string" } } },
+      "effect": null,
+      "expected": "unrecognised"
+    },
+    {
+      "name": "summarise_document",
+      "description": "Produces a short summary of the given text.",
+      "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } } },
+      "effect": null,
+      "expected": "unrecognised"
+    },
+    {
+      "name": "calculate_total",
+      "description": "Adds up a list of numbers.",
+      "inputSchema": { "type": "object", "properties": { "numbers": { "type": "array", "items": { "type": "number" } } } },
+      "effect": null,
+      "expected": "unrecognised"
+    }
+  ]
+}

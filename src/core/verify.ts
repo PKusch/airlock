@@ -143,7 +143,14 @@ const REVERSIBILITY_PROSE: Record<string, string> = {
 function factLines(facts: DerivedFacts): string[] {
   const lines: string[] = [];
 
-  lines.push(`This ${facts.effects.map((e) => EFFECT_PROSE[e] ?? e).join(', and ')}.`);
+  // A tool the deriver could not place gets told to the human as exactly
+  // that. Rendering an empty effect set used to produce "This ." — a sentence
+  // with the verb missing, which is a fair picture of the state it described.
+  lines.push(
+    facts.recognition.status === 'unrecognised'
+      ? `What this does is not known: '${facts.tool}' names no action Airlock recognises, and nothing else in its definition says. Treat the list below as incomplete.`
+      : `This ${facts.effects.map((e) => EFFECT_PROSE[e] ?? e).join(', and ')}.`,
+  );
 
   const paths = facts.targets.filter((t) => t.role === 'path' || t.role === 'glob');
   if (paths.length > 0) {

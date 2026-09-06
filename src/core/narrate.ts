@@ -37,11 +37,15 @@ export function factualProposal(facts: DerivedFacts): ProposedConsequence {
   affectedCount: facts.affected.kind === 'unbounded' ? null : facts.affected.n,
   scopePaths: facts.targets.filter((t) => t.role === 'path' || t.role === 'glob').map((t) => t.value),
   egress: [...facts.egress],
-    risks: facts.effects.map((e) => RISK_BY_EFFECT[e]).filter((r): r is string => Boolean(r)),
+    risks:
+      facts.recognition.status === 'unrecognised'
+        ? ['Nothing in the tool definition says what this does, so nothing above is a limit on it.']
+        : facts.effects.map((e) => RISK_BY_EFFECT[e]).filter((r): r is string => Boolean(r)),
   });
 }
 
 function headlineFor(facts: DerivedFacts): string {
+  if (facts.recognition.status === 'unrecognised') return 'What this does could not be determined';
   if (facts.effects.includes('spend')) return 'This moves money out of your account';
   if (facts.effects.includes('delete')) {
     return facts.affected.kind === 'unbounded'
