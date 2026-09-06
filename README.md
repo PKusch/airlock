@@ -8,7 +8,7 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test          # 51 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary
+npm test          # 53 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -21,7 +21,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 51 tests run in CI on every push and pull request, across
+The type check and all 53 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -216,6 +216,23 @@ vocabulary that moves any number in the table fails CI rather than drifting
 away from this paragraph. The corpus, like the fixtures, is mine — it can show
 the vocabulary failing, and it cannot show it succeeding.
 
+### What the parameters carry
+
+The same audit reported that only 37% of real parameters got a role, and left
+"opaque" to cover everything else. That number was true and the word was lazy.
+Going back through the 31 it did not understand:
+
+| | |
+|:--|:--|
+| Numbers, booleans and fixed choices — `head`, `dryRun`, `sortBy` | 18. These cannot carry a path, a destination or a command. They have no role because they need none. |
+| Names of the things acted on — `delete_entities.entityNames`, `open_nodes.names` | 2. Now given a `subject` role: not locatable, so no boundary applies, but countable. `delete_entities` on three names affects three things, and a narrator claiming one is understating. |
+| Free text and structured payloads — `write_file.content`, `edit_file.edits`, `add_observations.observations` | **11.** These could hold anything, and the gate does not look inside. This is the actual blindness. |
+
+So the honest figure is 20 of 49 roled, 18 inert, and 11 the gate cannot see
+into. `adaptationGaps()` now reports those eleven and only those, so an
+operator reading the card is told about `edits` and not about `dryRun`. The
+split is pinned in `test/real-corpus.test.ts`.
+
 ## What is verified, and what isn't
 
 | Claim | Status |
@@ -289,11 +306,12 @@ approving, and was previously unsayable.
   suite runs against a *fully compromised* narrator, which is a strictly
   stronger test than a live model that happens to behave. But it means the
   quality of real narration is unmeasured, and I am not claiming it.
-- **Only 37% of real parameters get a role.** Measured across the 36-tool
-  corpus: 18 of 49. The rest — `edit_file.edits`, `add_observations.observations`,
-  `write_file.content` — are treated as opaque data, so nothing about them is
-  checked. `adaptationGaps()` reports every one rather than letting it pass
-  quietly, but the gate is blind to what is inside them.
+- **Eleven of 49 real parameters are payloads the gate cannot see into.**
+  Measured across the 36-tool corpus: 20 get a role, 18 are numbers, booleans
+  or fixed choices that cannot carry a target, and the remaining 11 —
+  `edit_file.edits`, `add_observations.observations`, `write_file.content` —
+  are free text or structured data treated as opaque. `adaptationGaps()`
+  reports exactly those eleven, but the gate is blind to what is inside them.
 - **Effects are inferred from a verb vocabulary.** A tool whose leading verb is
   not in `VERB_EFFECTS` and whose description avoids the tell patterns is scored
   on its parameters alone, and if those say nothing either it is reported as

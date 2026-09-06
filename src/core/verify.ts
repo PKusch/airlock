@@ -152,12 +152,12 @@ function factLines(facts: DerivedFacts): string[] {
       : `This ${facts.effects.map((e) => EFFECT_PROSE[e] ?? e).join(', and ')}.`,
   );
 
-  const paths = facts.targets.filter((t) => t.role === 'path' || t.role === 'glob');
-  if (paths.length > 0) {
+  const items = facts.targets.filter((t) => t.role === 'path' || t.role === 'glob' || t.role === 'subject');
+  if (items.length > 0) {
     lines.push(
       facts.affected.kind === 'unbounded'
-        ? `It applies to everything matching ${paths.map((p) => `'${p.value}'`).join(' and ')} — the number of items is not knowable before it runs.`
-        : `It affects ${facts.affected.n} item${facts.affected.n === 1 ? '' : 's'}: ${paths.map((p) => `'${p.value}'`).join(', ')}.`,
+        ? `It applies to everything matching ${items.map((p) => `'${p.value}'`).join(' and ')} — the number of items is not knowable before it runs.`
+        : `It affects ${facts.affected.n} item${facts.affected.n === 1 ? '' : 's'}: ${items.map((p) => `'${p.value}'`).join(', ')}.`,
     );
   }
 

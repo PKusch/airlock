@@ -17,7 +17,7 @@ export interface McpToolDefinition {
   description?: string;
   inputSchema: {
     type: 'object';
-    properties?: Record<string, { type?: string; description?: string; format?: string; items?: unknown }>;
+    properties?: Record<string, { type?: string; description?: string; format?: string; items?: unknown; enum?: unknown[] }>;
     required?: string[];
   };
 }
@@ -38,6 +38,10 @@ const ROLE_TOKENS: Array<[NonNullable<ParamSpec['role']>, Set<string>]> = [
   ['url', new Set(['url', 'urls', 'uri', 'endpoint', 'webhook', 'href'])],
   ['glob', new Set(['pattern', 'patterns', 'glob', 'globs', 'wildcard'])],
   ['path', new Set(['path', 'paths', 'file', 'files', 'filepath', 'filename', 'dir', 'dirs', 'directory', 'directories', 'folder', 'source', 'destination'])],
+  // Last, because it claims nothing about where or how, only about how many.
+  // `name` on its own is left out: `gzip-file-as-resource.name` is an output
+  // filename, and one wrong subject would count something that is not acted on.
+  ['subject', new Set(['names', 'ids', 'identifiers'])],
 ];
 
 /** Split `excludePatterns`, `chat_id`, `to` into lowercase tokens. */
@@ -61,7 +65,13 @@ function inferRole(name: string, prop: { description?: string; format?: string }
   // A description is weaker evidence than a name, so it is consulted last.
   if (prop.description && /\b(glob|wildcard) pattern\b/i.test(prop.description)) return 'glob';
   if (prop.description && /\b(file|directory|folder) path\b/i.test(prop.description)) return 'path';
+  if (prop.description && /\b(?:array|list) of \w+ (?:names|ids)\b/i.test(prop.description)) return 'subject';
   return undefined;
+}
+
+/** A value that cannot carry a target, whatever it says. */
+function isInert(prop: { type?: string; enum?: unknown[] }): boolean {
+  return prop.type === 'number' || prop.type === 'integer' || prop.type === 'boolean' || Array.isArray(prop.enum);
 }
 
 function mapType(t: string | undefined): ParamSpec['type'] {
@@ -100,6 +110,7 @@ export function adaptMcpTool(def: McpToolDefinition, options: AdaptOptions = {})
       type: mapType(prop.type),
       description: prop.description,
       ...(role ? { role } : {}),
+      ...(!role && isInert(prop) ? { inert: true } : {}),
       ...(role
         ? confinementFor(options.confinement, def.name, name)
         : {}),
@@ -135,16 +146,23 @@ export function adaptationGaps(schema: ToolSchema): string[] {
   if (!schema.declaredEffects || schema.declaredEffects.length === 0) {
     gaps.push('No declared effects — every effect is inferred from tool text and parameter names.');
   }
-  const roled = Object.entries(schema.parameters).filter(([, p]) => p.role);
+  // Only a place can have a boundary. An amount, a command or a subject name
+  // has nowhere to be confined to, so its absence of one is not a gap.
+  const BOUNDABLE = new Set(['path', 'glob', 'url', 'recipient']);
+  const roled = Object.entries(schema.parameters).filter(([, p]) => p.role && BOUNDABLE.has(p.role));
   const unconfined = roled.filter(([, p]) => !p.confinedTo);
   if (unconfined.length > 0) {
     gaps.push(
       `No boundary declared for: ${unconfined.map(([n]) => n).join(', ')} — confinement cannot be checked.`,
     );
   }
+  // Two kinds of parameter get no role, and only one of them is a gap. A
+  // number, a boolean or a fixed choice cannot smuggle a path or a destination;
+  // free text and structured payloads can, and the gate does not look inside.
   const unroled = Object.entries(schema.parameters).filter(([, p]) => !p.role);
-  if (unroled.length > 0) {
-    gaps.push(`No role inferred for: ${unroled.map(([n]) => n).join(', ')} — treated as opaque data.`);
+  const opaque = unroled.filter(([, p]) => !p.inert);
+  if (opaque.length > 0) {
+    gaps.push(`No role inferred for: ${opaque.map(([n]) => n).join(', ')} — treated as opaque data.`);
   }
   return gaps;
 }

@@ -59,6 +59,7 @@ function benignArgs(def: McpToolDefinition): Record<string, unknown> {
 
 let params = 0;
 let roled = 0;
+let inert = 0;
 const tally: Record<SeverityName, number> = { none: 0, low: 0, moderate: 0, high: 0, critical: 0 };
 const SEVERITY_DRIVERS = new Set(['delete', 'execute', 'network_egress', 'message_send', 'spend', 'credential_access']);
 const loud: Array<{
@@ -74,7 +75,10 @@ for (const server of servers) {
     const withRole = names.filter((n) => schema.parameters[n].role);
     roled += withRole.length;
     for (const n of names) {
-      if (!schema.parameters[n].role) opaque.push(`${def.name}.${n}`);
+      const p = schema.parameters[n];
+      if (p.role) continue;
+      if (p.inert) inert++;
+      else opaque.push(`${def.name}.${n}`);
     }
 
     const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
@@ -105,7 +109,8 @@ console.log(`\n${BOLD}${total} real MCP tool definitions${OFF} ${DIM}(filesystem
 
 console.log(`${BOLD}Role inference${OFF}`);
 console.log(`  ${roled}/${params} parameters got a role ${DIM}(${Math.round((roled / params) * 100)}%)${OFF}`);
-console.log(`  ${opaque.length} treated as opaque data\n`);
+console.log(`  ${inert} cannot carry a target ${DIM}(number, boolean or fixed choice)${OFF}`);
+console.log(`  ${opaque.length} treated as opaque data ${DIM}(free text or structured payload the gate does not look inside)${OFF}\n`);
 
 console.log(`${BOLD}Severity on ordinary, in-bounds calls${OFF}`);
 for (const level of Object.keys(tally) as SeverityName[]) {

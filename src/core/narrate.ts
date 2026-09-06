@@ -49,8 +49,8 @@ function headlineFor(facts: DerivedFacts): string {
   if (facts.effects.includes('spend')) return 'This moves money out of your account';
   if (facts.effects.includes('delete')) {
     return facts.affected.kind === 'unbounded'
-      ? 'This deletes an unknown number of files'
-      : `This deletes ${facts.affected.n} file(s)`;
+      ? 'This deletes an unknown number of items'
+      : `This deletes ${facts.affected.n} item(s)`;
   }
   const escaped = facts.targets.find((t) => isViolated(t.confinement));
   if (escaped) {

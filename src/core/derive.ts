@@ -377,7 +377,9 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     // `null` means genuinely uncountable, and nothing else. A call with no
     // file targets at all counts zero of them — collapsing those two into the
     // same value made a payment read as touching an unbounded set of files.
-    affected: isUnbounded ? UNBOUNDED : exactly(targets.filter((t) => t.role === 'path').length),
+    // A subject is counted alongside a path: `delete_entities` on three names
+    // affects three things, and a narrator claiming one is understating.
+    affected: isUnbounded ? UNBOUNDED : exactly(targets.filter((t) => t.role === 'path' || t.role === 'subject').length),
     reversibility: deriveReversibility(effects),
     egress,
     severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition),

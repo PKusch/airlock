@@ -59,10 +59,21 @@ export interface ToolSchema {
 export interface ParamSpec {
   type: 'string' | 'number' | 'boolean' | 'string[]' | 'object';
   description?: string;
-  /** Marks a parameter as naming a filesystem path, URL, recipient, or amount. */
-  role?: 'path' | 'glob' | 'url' | 'recipient' | 'amount' | 'command' | 'secret';
+  /**
+   * Marks a parameter as naming a filesystem path, URL, recipient, or amount.
+   * `subject` names the things the tool acts on without locating them — entity
+   * names, record ids — so the call can at least be counted, if not confined.
+   */
+  role?: 'path' | 'glob' | 'url' | 'recipient' | 'amount' | 'command' | 'secret' | 'subject';
   /** The directory or host the tool claims to confine itself to. */
   confinedTo?: string;
+  /**
+   * A number, a boolean or a fixed choice cannot carry a path, a destination or
+   * a command. Such a parameter has no role because it needs none, which is a
+   * different thing from a free-text or structured parameter that could hold
+   * anything and is simply not understood. The gap report tells them apart.
+   */
+  inert?: boolean;
 }
 
 /** A concrete pending invocation. Arguments are attacker-controlled. */

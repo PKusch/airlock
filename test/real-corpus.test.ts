@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { deriveFacts, tokenise } from '../src/core/derive.ts';
-import { adaptMcpTool, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { adaptMcpTool, adaptationGaps, type McpToolDefinition } from '../src/mcp/adapt.ts';
 import { SEVERITY, type ToolCall } from '../src/core/types.ts';
 
 /**
@@ -101,6 +101,39 @@ test('environment access is treated as credential access', () => {
   const facts = deriveFacts(adaptMcpTool(def), { id: 'x', tool: 'get-env', args: {} });
   assert.ok(facts.effects.includes('credential_access'));
   assert.equal(facts.severity, 'critical');
+});
+
+test('a subject is counted even though it cannot be located', () => {
+  // `delete_entities` takes names, not paths. Before the `subject` role its
+  // count was zero, so a narrator claiming "one" was not understating anything.
+  const def = allTools.find((t) => t.name === 'delete_entities')!;
+  const schema = adaptMcpTool(def);
+  assert.equal(schema.parameters.entityNames.role, 'subject');
+  const facts = deriveFacts(schema, { id: 'x', tool: def.name, args: { entityNames: ['a', 'b', 'c'] } });
+  assert.deepEqual(facts.affected, { kind: 'exact', n: 3 });
+  assert.equal(facts.targets.filter((t) => t.role === 'subject').length, 3);
+  assert.ok(!adaptationGaps(schema).some((g) => g.includes('No boundary')), 'a name has nowhere to be confined to');
+});
+
+test('the parameter split is the one the README reports', () => {
+  // Three kinds: given a role; inert, because a number, boolean or fixed choice
+  // cannot carry a target; opaque, because free text or a payload could and
+  // the gate does not look inside. Only the last is blindness.
+  let roled = 0, inert = 0;
+  const opaque: string[] = [];
+  for (const def of allTools) {
+    for (const [name, p] of Object.entries(adaptMcpTool(def).parameters)) {
+      if (p.role) roled++;
+      else if (p.inert) inert++;
+      else opaque.push(`${def.name}.${name}`);
+    }
+  }
+  assert.equal(roled + inert + opaque.length, 49);
+  assert.equal(roled, 20);
+  assert.equal(inert, 18);
+  assert.equal(opaque.length, 11);
+  assert.ok(opaque.includes('write_file.content') && opaque.includes('edit_file.edits'));
+  assert.ok(!opaque.includes('read_file.head'), 'a line count is inert, not opaque');
 });
 
 test('every inferred effect can name the text that produced it', () => {
