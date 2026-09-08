@@ -388,9 +388,9 @@ src/mcp/adapt.ts         MCP definitions → something derivable, and what was l
 src/mcp/gate.ts          the guard: derive → narrate → verify → render
 src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
 src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
-corpus/                  36 real MCP definitions with ground truth; 22 tools the vocabulary does not know
+corpus/                  36 real MCP definitions with ground truth; two corpora (22 + 28 tools) of verbs the vocabulary did not know
 test/gate.test.ts        attack suite + calibration
-test/unrecognised.test.ts what the vocabulary misses, pinned
+test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
 ```
