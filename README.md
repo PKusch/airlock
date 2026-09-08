@@ -8,11 +8,11 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test          # 53 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary
+npm test          # 55 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
-npm run unrecognised # 22 ordinarily-named tools whose verbs the vocabulary does not know
+npm run unrecognised # 50 ordinarily-named tools across two corpora: what the verb vocabulary misses
 npm run introspect # re-pull those definitions from the reference servers
 npm run dev       # the UI, port 3200
 
@@ -21,7 +21,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 53 tests run in CI on every push and pull request, across
+The type check and all 55 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -216,6 +216,47 @@ vocabulary that moves any number in the table fails CI rather than drifting
 away from this paragraph. The corpus, like the fixtures, is mine — it can show
 the vocabulary failing, and it cannot show it succeeding.
 
+#### Extending the vocabulary, and what that bought
+
+The obvious response to fourteen misses is to add the fourteen verbs. I did —
+thirteen of them, plus two description phrases (`bills the account`, `releases
+the held funds`) and one credential phrase (`signing keys`). `place` and
+`start` were left out as too ambiguous, and `reset` was mapped to `write`
+because `reset_password` and `reset_counter` are writes. On the corpus the
+extension was written against, the result is what you would expect:
+
+| | first corpus, 18 consequential | held-out corpus, 22 consequential |
+|:--|:--|:--|
+| Before the extension | 4 caught, 14 unrecognised | — |
+| After | **17 caught**, 1 under-read, 0 unrecognised | **3 caught**, 0 under-read, **19 unrecognised** |
+| Harmless tools | 4 of 4 still unrecognised | 6 of 6 still unrecognised |
+
+The second column is the one that matters. `corpus/unrecognised-verbs-heldout.json`
+is 28 tools written in the same sitting from a different prompt — how cloud,
+devops, finance and HR APIs name their operations — and not checked against
+the vocabulary while being written. `terminate_instance`, `decommission_host`,
+`cancel_subscription`, `grant_role`, `rollback_deployment`, `settle_invoice`,
+`impersonate_user`, `replicate_bucket`. Nineteen of twenty-two are unrecognised.
+The three that are caught — `invite_member`, `wire_funds`, `reveal_secret` —
+are caught by the mechanisms that existed before the extension: the word
+"email" in a description, a parameter named `amount`, the noun `secret`. **Not
+one of the thirteen new verbs fired on the held-out corpus.** A test holds
+that, so the claim cannot quietly improve.
+
+So the extension is kept, because the words in it are real and each one is
+now a `high` or `critical` line on a card instead of an "unknown", but it is
+not the fix and the numbers above say so. Every API surface has its own verbs.
+A list that has learned this month's will not know next month's, and the
+honest estimate of the gap is the held-out one, not the first.
+
+One more state came out of measuring this. `reset_workspace` is now
+*under-read*: recognised as a `write` at `moderate`, when it destroys
+uncommitted work. Before the extension it was unrecognised and the card said
+so; now the card says something milder than the truth and does not say it is
+guessing. That is the understating direction the whole gate exists to prevent,
+and it is a cost of every verb added. The report shows it as its own column
+rather than folding it into "caught".
+
 ### What the parameters carry
 
 The same audit reported that only 37% of real parameters got a role, and left
@@ -242,7 +283,7 @@ split is pinned in `test/real-corpus.test.ts`.
 | A path argument resolves outside the tool's declared directory | **Verified in code**, lexically (see limits). |
 | A symlink inside a confined directory pointing out of it | **Verified against a real filesystem** when a resolver is supplied; string-only otherwise, and the human is told which. |
 | The derived severity is the *correct* severity | **Not verified.** The ladder is measured for alarm rate, not for whether `critical` means what a person would mean by it. |
-| The effect inference caught everything the tool really does | **Not verified, and measured to fail.** 14 of 18 ordinarily-named consequential tools with a verb outside the vocabulary are missed. A miss is now reported as *unrecognised* rather than scored as harmless, but it is still a miss. |
+| The effect inference caught everything the tool really does | **Not verified, and measured to fail.** After extending the vocabulary against a first corpus (17 of 18 now caught), a held-out corpus of 22 ordinarily-named consequential tools still misses 19, and none of the new verbs fired on it. A miss is reported as *unrecognised* rather than scored as harmless, but it is still a miss. |
 | A tool the deriver cannot place is never scored as harmless | **Verified in code.** Empty inference is a named state with a `moderate` floor, and a test holds it over 22 such tools. |
 
 `6/6 held` in the attack report means no compromised narration reached the
@@ -292,9 +333,11 @@ approving, and was previously unsayable.
   name and description plus parameter roles. It over-fires by design — a false
   effect costs a louder prompt, a missed one costs the user the thing the prompt
   existed to prevent. But a tool that describes itself in words outside the list
-  (`retire_entities`, which deletes) is caught only if its parameters give it
-  away, and that is measured above at 14 misses in 18. Real capability
-  annotations, or a signature over a reviewed manifest, would be the actual fix.
+  (`terminate_instance`, which deletes) is caught only if its parameters or
+  description give it away, and that is measured above at 19 misses in 22 on a
+  held-out corpus — extending the vocabulary closed the first corpus and bought
+  nothing on the second. Real capability annotations, or a signature over a
+  reviewed manifest, would be the actual fix.
 - **Path confinement needs a resolver to be sound.** With `nodeResolver`
   supplied, symlink escapes are caught against a real filesystem and an
   unresolvable path is reported as *unknown* rather than safe. Without one — in

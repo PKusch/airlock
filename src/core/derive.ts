@@ -71,6 +71,16 @@ const VERB_EFFECTS: Record<string, EffectKind> = {
 
   pay: 'spend', charge: 'spend', purchase: 'spend', buy: 'spend',
   transfer: 'spend', refund: 'spend', checkout: 'spend',
+
+  // Added after `corpus/unrecognised-verbs.json` measured 14 misses in 18.
+  // Each is an ordinary API verb whose effect is the same wherever it appears;
+  // verbs that mean different things in different APIs (`place`, `reset` as
+  // destroy-and-restore, `start`) are left out on purpose. The gain from this
+  // list is measured on a second corpus the list was not written against.
+  retire: 'delete', forget: 'delete', flush: 'delete', expire: 'delete',
+  apply: 'write', revoke: 'write', approve: 'write', rotate: 'write', reset: 'write',
+  launch: 'execute', deploy: 'execute',
+  share: 'network_egress', mirror: 'network_egress',
 };
 
 /**
@@ -100,8 +110,8 @@ const DESCRIPTION_TELLS: Array<[EffectKind, RegExp]> = [
   ['execute', /\b(executes?|runs? (?:a )?(?:command|script|shell)|spawns?)\b/i],
   ['network_egress', /\b(uploads?|sends? (?:it |them )?to (?:a )?(?:server|endpoint|url)|publishes?|transmits?)\b/i],
   ['message_send', /\b(sends? (?:an? )?(?:email|message|notification)|emails?|notifies)\b/i],
-  ['spend', /\b(charges?|pays?|transfers? funds|makes? a payment)\b/i],
-  ['credential_access', /\b(api key|access token|credentials?|password|environment variables?)\b/i],
+  ['spend', /\b(charges?|pays?|transfers? funds|makes? a payment|bills? (?:the )?(?:account|card|customer)|releases? (?:the )?(?:held )?funds)\b/i],
+  ['credential_access', /\b(api key|access token|credentials?|password|environment variables?|(?:signing|secret|private|encryption) keys?)\b/i],
 ];
 
 /** Split `get-annotated-message`, `readTextFile`, `read_file` into tokens. */

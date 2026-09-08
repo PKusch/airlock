@@ -1,6 +1,12 @@
 /**
  * `npm run unrecognised` — what the verb vocabulary misses, measured on tools
  * named the way ordinary API authors name things.
+ *
+ * Two corpora. The first was written before the vocabulary was extended and
+ * the extension was written against it, so it can only show that the words it
+ * contains are now known. The second was held out: written in the same
+ * sitting, from a different prompt, and not checked against the vocabulary.
+ * Its number is the estimate of what the extension bought.
  */
 import { readFileSync } from 'node:fs';
 
@@ -17,14 +23,11 @@ const OFF = '\x1b[0m';
 
 interface Labelled extends McpToolDefinition {
   effect: EffectKind | null;
-  expected: 'caught' | 'unrecognised';
 }
 
-const { tools }: { tools: Labelled[] } = JSON.parse(
-  readFileSync(new URL('../corpus/unrecognised-verbs.json', import.meta.url), 'utf8'),
-);
+export type Outcome = 'caught' | 'under-read' | 'unrecognised' | 'harmless';
 
-function benignArgs(def: McpToolDefinition): Record<string, unknown> {
+export function benignArgs(def: McpToolDefinition): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   for (const [name, prop] of Object.entries(def.inputSchema?.properties ?? {})) {
     const p = prop as { type?: string; format?: string };
@@ -37,29 +40,54 @@ function benignArgs(def: McpToolDefinition): Record<string, unknown> {
   return args;
 }
 
-const consequential = tools.filter((t) => t.effect !== null);
-const harmless = tools.filter((t) => t.effect === null);
-const caught: string[] = [];
-const missed: string[] = [];
-
-console.log(`\n${BOLD}${tools.length} tools whose leading verb the vocabulary does not know${OFF} ${DIM}(${consequential.length} consequential, ${harmless.length} harmless)${OFF}\n`);
-
-for (const def of tools) {
+/**
+ * caught      — the labelled effect is among those inferred
+ * under-read  — something was inferred, but not the labelled effect; the
+ *               deriver thinks it knows, and knows too little, which is the
+ *               understating direction the whole gate exists to prevent
+ * unrecognised — nothing inferred; reported to the person as unknown
+ */
+export function outcome(def: Labelled): Outcome {
   const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
   const facts = deriveFacts(adaptMcpTool(def), call);
-  const unrecognised = facts.recognition.status === 'unrecognised';
-  const hit = def.effect !== null && facts.effects.includes(def.effect);
-  if (def.effect !== null) (hit ? caught : missed).push(def.name);
-
-  const mark = def.effect === null
-    ? `${DIM}harmless ${OFF}`
-    : hit ? `${GREEN}caught   ${OFF}` : `${RED}missed   ${OFF}`;
-  const evidence = facts.effectEvidence.map((e) => `${e.effect}←"${e.matched}" (${e.source})`).join('  ');
-  console.log(
-    `  ${mark} ${def.name.padEnd(24)} ${DIM}${tokenise(def.name)[0].padEnd(10)}${OFF} ` +
-      `${(def.effect ?? '—').padEnd(17)} ${unrecognised ? `${YELLOW}${facts.severity} · unrecognised${OFF}` : `${facts.severity} · ${evidence}`}`,
-  );
+  if (def.effect === null) return 'harmless';
+  if (facts.recognition.status === 'unrecognised') return 'unrecognised';
+  return facts.effects.includes(def.effect) ? 'caught' : 'under-read';
 }
 
-console.log(`\n${BOLD}Consequential tools caught anyway${OFF}  ${caught.length}/${consequential.length} ${DIM}(by a description phrase or a parameter role)${OFF}`);
-console.log(`${BOLD}Missed${OFF}                            ${RED}${missed.length}/${consequential.length}${OFF} ${DIM}— now reported as unrecognised rather than scored as harmless${OFF}\n`);
+function report(title: string, file: string) {
+  const { tools }: { tools: Labelled[] } = JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
+  const consequential = tools.filter((t) => t.effect !== null);
+  const harmless = tools.filter((t) => t.effect === null);
+  const tally: Record<Outcome, number> = { caught: 0, 'under-read': 0, unrecognised: 0, harmless: 0 };
+
+  console.log(`\n${BOLD}${title}${OFF} ${DIM}(${consequential.length} consequential, ${harmless.length} harmless)${OFF}\n`);
+  for (const def of tools) {
+    const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
+    const facts = deriveFacts(adaptMcpTool(def), call);
+    const o = outcome(def);
+    tally[o] += 1;
+    const mark =
+      o === 'harmless' ? `${DIM}harmless    ${OFF}`
+      : o === 'caught' ? `${GREEN}caught      ${OFF}`
+      : o === 'under-read' ? `${YELLOW}under-read  ${OFF}`
+      : `${RED}unrecognised${OFF}`;
+    const evidence = facts.effectEvidence.map((e) => `${e.effect}←"${e.matched}" (${e.source})`).join('  ');
+    console.log(
+      `  ${mark} ${def.name.padEnd(24)} ${DIM}${tokenise(def.name)[0].padEnd(11)}${OFF} ` +
+        `${(def.effect ?? '—').padEnd(17)} ${facts.recognition.status === 'unrecognised' ? `${YELLOW}${facts.severity} · unrecognised${OFF}` : `${facts.severity} · ${evidence}`}`,
+    );
+  }
+  const n = consequential.length;
+  console.log(`\n  ${BOLD}caught${OFF} ${GREEN}${tally.caught}/${n}${OFF}   ${BOLD}under-read${OFF} ${YELLOW}${tally['under-read']}/${n}${OFF}   ${BOLD}unrecognised${OFF} ${RED}${tally.unrecognised}/${n}${OFF}` +
+    `   ${DIM}harmless still unrecognised: ${harmless.filter((t) => {
+      const call: ToolCall = { id: t.name, tool: t.name, args: benignArgs(t) };
+      return deriveFacts(adaptMcpTool(t), call).recognition.status === 'unrecognised';
+    }).length}/${harmless.length}${OFF}`);
+}
+
+if (process.argv[1] && /unrecognised-report/.test(process.argv[1])) {
+  report('First corpus — the vocabulary was extended against these words', '../corpus/unrecognised-verbs.json');
+  report('Held-out corpus — written separately, not checked against the vocabulary', '../corpus/unrecognised-verbs-heldout.json');
+  console.log();
+}

@@ -1,0 +1,387 @@
+{
+  "_comment": "Held-out corpus. Written on 2026-09-08 in the same sitting as the vocabulary extension that followed the first corpus, but from a different prompt (how cloud, devops, finance and HR APIs name their operations) and not checked against the vocabulary while being written. Its purpose is to estimate what the first corpus cannot: how much of the gap an extension closes on words it was not written against. 'effect' is what each tool really does; null is harmless.",
+  "tools": [
+    {
+      "name": "terminate_instance",
+      "description": "Terminates a running compute instance.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instanceId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "delete"
+    },
+    {
+      "name": "decommission_host",
+      "description": "Takes a host out of the fleet for good.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "delete"
+    },
+    {
+      "name": "evict_tenant",
+      "description": "Evicts a tenant and frees its allocated storage.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "delete"
+    },
+    {
+      "name": "scrub_records",
+      "description": "Scrubs the matching records from the archive.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "delete"
+    },
+    {
+      "name": "void_transaction",
+      "description": "Voids a settled transaction.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "transactionId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "cancel_subscription",
+      "description": "Cancels the customer's subscription at the end of the period.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "suspend_account",
+      "description": "Suspends an account so it can no longer sign in.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "disable_user",
+      "description": "Disables a user across all connected applications.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "grant_role",
+      "description": "Grants a role to a principal in the given project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "principal": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "promote_release",
+      "description": "Promotes a release candidate to the production channel.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "release": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "execute"
+    },
+    {
+      "name": "rollback_deployment",
+      "description": "Rolls the deployment back to the previous revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deploymentId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "execute"
+    },
+    {
+      "name": "restart_service",
+      "description": "Restarts the named service on every node.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "execute"
+    },
+    {
+      "name": "scale_cluster",
+      "description": "Scales the cluster to the requested node count.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cluster": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "integer"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "invite_member",
+      "description": "Invites a person to the workspace by email address.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "message_send"
+    },
+    {
+      "name": "broadcast_announcement",
+      "description": "Broadcasts an announcement to every member of the organisation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "message_send"
+    },
+    {
+      "name": "escalate_ticket",
+      "description": "Escalates a ticket to the on-call engineer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write"
+    },
+    {
+      "name": "wire_funds",
+      "description": "Wires funds from the operating account to a beneficiary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "beneficiary": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        }
+      },
+      "effect": "spend"
+    },
+    {
+      "name": "settle_invoice",
+      "description": "Settles an outstanding invoice from the account on file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "spend"
+    },
+    {
+      "name": "reveal_secret",
+      "description": "Reveals the plaintext value of a stored secret.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "secretName": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "credential_access"
+    },
+    {
+      "name": "impersonate_user",
+      "description": "Issues a session that acts as the given user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "credential_access"
+    },
+    {
+      "name": "replicate_bucket",
+      "description": "Replicates the bucket to a bucket in another region.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "network_egress"
+    },
+    {
+      "name": "offload_logs",
+      "description": "Offloads rotated logs to the external log provider.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "network_egress"
+    },
+    {
+      "name": "measure_latency",
+      "description": "Measures round-trip latency to the given host.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": null
+    },
+    {
+      "name": "render_preview",
+      "description": "Renders a preview image of the document.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": null
+    },
+    {
+      "name": "validate_schema",
+      "description": "Validates a document against its schema.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": null
+    },
+    {
+      "name": "lint_config",
+      "description": "Lints a configuration file and lists the problems found.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": null
+    },
+    {
+      "name": "estimate_cost",
+      "description": "Estimates the monthly cost of the described resources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": null
+    },
+    {
+      "name": "classify_text",
+      "description": "Classifies a piece of text into one of the known categories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": null
+    }
+  ]
+}
