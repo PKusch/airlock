@@ -53,7 +53,24 @@ export interface ToolSchema {
    * no such field — and absence of evidence is not evidence.
    */
   declaredEffects?: EffectKind[];
+  /**
+   * What the tool's own server says about it, from MCP tool annotations. The
+   * spec's instruction is that clients MUST treat these as untrusted unless
+   * the server is trusted, so they are held apart from `declaredEffects`:
+   * never a floor on effects, never a reason to lower anything. They can
+   * raise, they can contradict, and they can be quoted to the person. Only
+   * hints the server actually wrote are recorded; the spec's defaults are
+   * not filled in, because a default is not a statement.
+   */
+  selfDescription?: SelfDescription;
   parameters: Record<string, ParamSpec>;
+}
+
+export interface SelfDescription {
+  readOnly?: boolean;
+  destructive?: boolean;
+  idempotent?: boolean;
+  openWorld?: boolean;
 }
 
 export interface ParamSpec {
@@ -128,6 +145,8 @@ export interface DerivedFacts {
    * the vocabulary does not know is a third state, and it is named here.
    */
   recognition: Recognition;
+  /** The server's own account, carried through so the card can quote it. */
+  selfDescription?: SelfDescription;
 }
 
 /**

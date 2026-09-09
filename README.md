@@ -8,11 +8,11 @@ thing they are shown can be made to lie.
 
 ```bash
 npm install
-npm test          # 55 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary
+npm test          # 64 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
-npm run unrecognised # 50 ordinarily-named tools across two corpora: what the verb vocabulary misses
+npm run unrecognised # 50 ordinarily-named tools across two corpora: what the vocabulary misses, and what the server's hints add
 npm run introspect # re-pull those definitions from the reference servers
 npm run dev       # the UI, port 3200
 
@@ -21,7 +21,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 55 tests run in CI on every push and pull request, across
+The type check and all 64 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -107,8 +107,11 @@ a product claim.
 ### Under real MCP conditions
 
 The numbers above assume tools declare their effects and their boundaries. Real
-MCP tools declare neither — the protocol has no field for either. Same corpus,
-adapted through `src/mcp/adapt.ts`:
+MCP tools declare no boundaries — the protocol has no field for one — and no
+effects in this deriver's vocabulary. (An earlier version of this paragraph
+said the protocol has no capability annotations at all. That was wrong; see
+*What the server says about itself* below.) Same corpus, adapted through
+`src/mcp/adapt.ts`:
 
 | | false alarms |
 |:--|:--|
@@ -208,8 +211,8 @@ harmless tools, and stopping a person for `echo` is how a gate gets clicked
 through. The vocabulary cannot tell `retire_entities` from `translate_text`,
 and the honest move is to say so on the card rather than guess in either
 direction. An operator who would rather stop can set the gate's `threshold` to
-`moderate`, at the cost of stopping on those three. The actual fix is the one
-the limits section names: a declaration channel the protocol does not have.
+`moderate`, at the cost of stopping on those three. The actual fix is a
+declaration channel. The protocol has a partial one, and it is measured below.
 
 The split is pinned by `test/unrecognised.test.ts`, so a change to the
 vocabulary that moves any number in the table fails CI rather than drifting
@@ -257,6 +260,54 @@ guessing. That is the understating direction the whole gate exists to prevent,
 and it is a cost of every verb added. The report shows it as its own column
 rather than folding it into "caught".
 
+### What the server says about itself
+
+This README said, in three places, that MCP tool definitions carry no
+capability annotations. They do. Since the 2025-03-26 revision a tool may
+carry `annotations` with four hints — `readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint` — and all 36 tools in the real corpus had
+them the whole time, sitting in `corpus/real-mcp-tools.json` unread. The spec
+also says what to make of them: *clients MUST consider tool annotations to be
+untrusted unless they come from trusted servers.*
+
+So they are wired in the only way an untrusted self-description can be: it
+may make a call look worse, it may contradict the derivation, and it is quoted
+to the person as the server's word; it may never make a call look better.
+Four rules, and a test holds that none of them lowers anything on any corpus:
+
+| the server says | the deriver does |
+|:--|:--|
+| `readOnlyHint: true`, and the definition implies a delete, send, spend or credential read | signal `self_description_contradicted`, one level up |
+| `destructiveHint: true` on a tool the vocabulary cannot place | `high` instead of the unrecognised floor of `moderate` |
+| `openWorldHint: true` on a tool the vocabulary cannot place | `high`, the same as an unconfined URL already gets |
+| `destructiveHint: true` on anything | reversibility floored at *irreversible*, with provenance |
+
+Only hints the server actually wrote count. The spec's defaults (destructive
+true, open-world true) are not filled in, because a server that wrote nothing
+has declared nothing.
+
+On the real corpus this changes no alarm — 5 of 5 caught, 0 of 31 false — and
+finds one discrepancy: the everything server calls `get-env` read-only, and it
+prints every environment variable of the host process. Read-only is true of
+the filesystem and false of the person's secrets, and the card now says the two
+disagree. On the held-out corpus, annotated as each tool's author would honestly
+annotate it:
+
+| held-out, 22 consequential | at the alarm threshold |
+|:--|:--|
+| Vocabulary alone | 3 |
+| With the server's hints | **14** |
+| Harmless tools raised | 1 of 6 — `measure_latency`, read-only and open-world, which is the same call the gate already stops for `fetch_docs` |
+
+Eight consequential tools stay at `moderate` with hints: `suspend_account`,
+`disable_user`, `grant_role`, `impersonate_user`, `promote_release`,
+`restart_service`, `scale_cluster`, `escalate_ticket`. Every one is a write
+that is not destructive and does not leave its own system, which is the exact
+shape MCP's four hints cannot distinguish from a harmless write. Two of them
+are privilege changes, and there is no hint for that. So the declaration
+channel closes most of the vocabulary gap and none of *that* one, and the
+honest reading of the table is 14, not 22.
+
 ### What the parameters carry
 
 The same audit reported that only 37% of real parameters got a role, and left
@@ -284,7 +335,8 @@ split is pinned in `test/real-corpus.test.ts`.
 | A symlink inside a confined directory pointing out of it | **Verified against a real filesystem** when a resolver is supplied; string-only otherwise, and the human is told which. |
 | The derived severity is the *correct* severity | **Not verified.** The ladder is measured for alarm rate, not for whether `critical` means what a person would mean by it. |
 | The effect inference caught everything the tool really does | **Not verified, and measured to fail.** After extending the vocabulary against a first corpus (17 of 18 now caught), a held-out corpus of 22 ordinarily-named consequential tools still misses 19, and none of the new verbs fired on it. A miss is reported as *unrecognised* rather than scored as harmless, but it is still a miss. |
-| A tool the deriver cannot place is never scored as harmless | **Verified in code.** Empty inference is a named state with a `moderate` floor, and a test holds it over 22 such tools. |
+| A tool the deriver cannot place is never scored as harmless | **Verified in code.** Empty inference is a named state with a `moderate` floor, and a test holds it over 50 such tools. |
+| The server's own annotations never lower severity, reversibility, effects or recognition | **Verified in code**, over the real corpus and both vocabulary corpora. They raise, contradict and are quoted, and nothing else. |
 
 `6/6 held` in the attack report means no compromised narration reached the
 human. It does **not** mean the derivation saw everything the tool can do.
@@ -336,8 +388,9 @@ approving, and was previously unsayable.
   (`terminate_instance`, which deletes) is caught only if its parameters or
   description give it away, and that is measured above at 19 misses in 22 on a
   held-out corpus — extending the vocabulary closed the first corpus and bought
-  nothing on the second. Real capability annotations, or a signature over a
-  reviewed manifest, would be the actual fix.
+  nothing on the second. MCP's tool annotations, used only to raise, take that
+  to 14 of 22 and cannot see a non-destructive write. A signature over a
+  reviewed manifest would be the actual fix.
 - **Path confinement needs a resolver to be sound.** With `nodeResolver`
   supplied, symlink escapes are caught against a real filesystem and an
   unresolvable path is reported as *unknown* rather than safe. Without one — in

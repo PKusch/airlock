@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 
 import { deriveFacts } from '../src/core/derive.ts';
-import { adaptMcpTool, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { adaptMcpTool, withoutAnnotations, type McpToolDefinition } from '../src/mcp/adapt.ts';
 import { SEVERITY, type SeverityName, type ToolCall } from '../src/core/types.ts';
 
 const DIM = '\x1b[2m';
@@ -146,3 +146,22 @@ if (falsePositives.length > 0) {
 
 console.log(`${DIM}Opaque parameters (no role inferred):${OFF}`);
 console.log(`  ${DIM}${opaque.join(', ')}${OFF}\n`);
+
+// --- What the server's own hints do on this corpus ---------------------------
+{
+  const all = servers.flatMap((s) => s.tools);
+  const annotated = all.filter((t) => t.annotations && Object.keys(t.annotations).length > 0);
+  const facts = (def: McpToolDefinition) => {
+    const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
+    return deriveFacts(adaptMcpTool(def, { confinement: CONFINEMENT }), call);
+  };
+  const moved = all.filter((t) => facts(t).severity !== facts(withoutAnnotations(t)).severity);
+  const contradicted = all.filter((t) => facts(t).signals.some((s) => s.code === 'self_description_contradicted'));
+  const harderToUndo = all.filter((t) => facts(t).reversibility !== facts(withoutAnnotations(t)).reversibility);
+  console.log(`${BOLD}The server's own hints${OFF} ${DIM}(MCP tool annotations, untrusted by the spec)${OFF}`);
+  console.log(`  annotated            ${annotated.length}/${all.length}`);
+  console.log(`  severity changed     ${moved.length}${moved.length ? '  ' + DIM + moved.map((t) => t.name).join(', ') + OFF : ''}`);
+  console.log(`  reversibility raised ${harderToUndo.length}${harderToUndo.length ? '  ' + DIM + harderToUndo.map((t) => t.name).join(', ') + OFF : ''}`);
+  console.log(`  read-only, contradicted by its own definition  ${contradicted.length}${contradicted.length ? '  ' + RED + contradicted.map((t) => `${t.name} (${facts(t).effects.join('/')})`).join(', ') + OFF : ''}`);
+  console.log();
+}

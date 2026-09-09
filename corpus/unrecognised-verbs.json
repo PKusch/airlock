@@ -16,7 +16,13 @@
         }
       },
       "effect": "delete",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "forget_observations",
@@ -36,7 +42,13 @@
         }
       },
       "effect": "delete",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "reset_workspace",
@@ -50,7 +62,13 @@
         }
       },
       "effect": "delete",
-      "expected": "under-read"
+      "expected": "under-read",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "flush_cache",
@@ -64,7 +82,13 @@
         }
       },
       "effect": "delete",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "expire_sessions",
@@ -78,7 +102,13 @@
         }
       },
       "effect": "delete",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "apply_migration",
@@ -92,7 +122,13 @@
         }
       },
       "effect": "write",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
     },
     {
       "name": "revoke_access",
@@ -106,7 +142,13 @@
         }
       },
       "effect": "write",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "launch_job",
@@ -126,7 +168,13 @@
         }
       },
       "effect": "execute",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
     },
     {
       "name": "deploy_service",
@@ -143,7 +191,13 @@
         }
       },
       "effect": "execute",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
     },
     {
       "name": "share_document",
@@ -160,7 +214,13 @@
         }
       },
       "effect": "network_egress",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "mirror_repository",
@@ -174,7 +234,13 @@
         }
       },
       "effect": "network_egress",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "forward_thread",
@@ -191,7 +257,13 @@
         }
       },
       "effect": "message_send",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     },
     {
       "name": "place_order",
@@ -208,7 +280,13 @@
         }
       },
       "effect": "spend",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     },
     {
       "name": "approve_request",
@@ -222,7 +300,13 @@
         }
       },
       "effect": "spend",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "submit_expense",
@@ -239,7 +323,13 @@
         }
       },
       "effect": "spend",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     },
     {
       "name": "rotate_keys",
@@ -253,7 +343,13 @@
         }
       },
       "effect": "credential_access",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
     },
     {
       "name": "dump_environment",
@@ -263,7 +359,11 @@
         "properties": {}
       },
       "effect": "credential_access",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "archive_remote_resource",
@@ -281,7 +381,13 @@
         }
       },
       "effect": "network_egress",
-      "expected": "caught"
+      "expected": "caught",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "ping",
@@ -291,7 +397,11 @@
         "properties": {}
       },
       "effect": null,
-      "expected": "harmless"
+      "expected": "harmless",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "translate_text",
@@ -308,7 +418,11 @@
         }
       },
       "effect": null,
-      "expected": "harmless"
+      "expected": "harmless",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "summarise_document",
@@ -322,7 +436,11 @@
         }
       },
       "effect": null,
-      "expected": "harmless"
+      "expected": "harmless",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "calculate_total",
@@ -339,7 +457,12 @@
         }
       },
       "effect": null,
-      "expected": "harmless"
+      "expected": "harmless",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
     }
-  ]
+  ],
+  "_annotations": "MCP tool annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), set as the tool's own author would honestly set them, from what each tool does. Added 2026-09-09 so the deriver's use of the server's self-description can be measured with and without it."
 }

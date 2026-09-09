@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { deriveFacts, tokenise } from '../src/core/derive.ts';
 import { factualProposal } from '../src/core/narrate.ts';
-import { adaptMcpTool, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { adaptMcpTool, withoutAnnotations, type McpToolDefinition } from '../src/mcp/adapt.ts';
 import { gate } from '../src/mcp/gate.ts';
 import { SEVERITY, type EffectKind, type ToolCall } from '../src/core/types.ts';
 import { benignArgs, outcome, type Outcome } from './unrecognised-report.ts';
@@ -30,9 +30,10 @@ const load = (file: string): Labelled[] =>
 const first = load('../corpus/unrecognised-verbs.json');
 const heldOut = load('../corpus/unrecognised-verbs-heldout.json');
 
+/** The vocabulary alone: what the deriver makes of a tool with the server's hints removed. */
 const factsFor = (def: Labelled) => {
   const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
-  return { call, facts: deriveFacts(adaptMcpTool(def), call) };
+  return { call, facts: deriveFacts(adaptMcpTool(withoutAnnotations(def)), call) };
 };
 
 const tally = (tools: Labelled[]) => {
@@ -97,8 +98,8 @@ test('nothing inferred is not read as nothing happens', () => {
 });
 
 test('an unrecognised tool is told to the human as unknown, not as a read', async () => {
-  const def = heldOut.find((t) => t.name === 'terminate_instance')!;
-  const { call, facts } = factsFor(def);
+  const def = withoutAnnotations(heldOut.find((t) => t.name === 'terminate_instance')!);
+  const { call, facts } = factsFor(def as Labelled);
 
   assert.equal(factualProposal(facts).headline, 'What this does could not be determined');
 
@@ -111,7 +112,7 @@ test('an unrecognised tool is told to the human as unknown, not as a read', asyn
 test('recognition does not depend on the arguments', () => {
   // The state is about the definition, so a different call to the same tool
   // cannot flip it — otherwise an argument could talk the gate into knowing.
-  const def = heldOut.find((t) => t.name === 'void_transaction')!;
+  const def = withoutAnnotations(heldOut.find((t) => t.name === 'void_transaction')!);
   const a = deriveFacts(adaptMcpTool(def), { id: 'a', tool: def.name, args: { transactionId: 'x' } });
   const b = deriveFacts(adaptMcpTool(def), { id: 'b', tool: def.name, args: { transactionId: 'DROP TABLE users' } });
   assert.deepEqual(a.recognition, b.recognition);

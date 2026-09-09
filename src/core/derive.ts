@@ -18,6 +18,7 @@ import {
   type ParamSpec,
   type Recognition,
   type ReversibilityName,
+  type SelfDescription,
   type SeverityName,
   type EffectEvidence,
   type Signal,
@@ -379,6 +380,30 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     });
   }
 
+  // --- What the server says about itself ------------------------------------
+  // Untrusted by the spec's own instruction. So it works in one direction
+  // only: it can make a call look worse, contradict the derivation, and be
+  // quoted; it can never make a call look better. A read-only hint on a tool
+  // whose definition implies a delete is not reassurance, it is a discrepancy.
+  const self = schema.selfDescription;
+  const contradicted: EffectKind[] =
+    self?.readOnly === true ? [...effects].filter((e) => CONSEQUENTIAL.has(e)) : [];
+  if (self) {
+    if (contradicted.length > 0) {
+      signals.push({
+        code: 'self_description_contradicted',
+        detail: `the server describes '${schema.name}' as read-only; its definition implies ${contradicted.join(', ')}`,
+        source: 'annotations',
+      });
+    }
+    if (self.destructive === true) {
+      signals.push({ code: 'declared_destructive', detail: `the server describes '${schema.name}' as destructive`, source: 'annotations' });
+    }
+    if (self.openWorld === true) {
+      signals.push({ code: 'declared_open_world', detail: `the server describes '${schema.name}' as reaching outside its own system`, source: 'annotations' });
+    }
+  }
+
   return {
     callId: call.id,
     tool: call.tool,
@@ -390,16 +415,22 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     // A subject is counted alongside a path: `delete_entities` on three names
     // affects three things, and a narrator claiming one is understating.
     affected: isUnbounded ? UNBOUNDED : exactly(targets.filter((t) => t.role === 'path' || t.role === 'subject').length),
-    reversibility: deriveReversibility(effects),
+    reversibility: deriveReversibility(effects, self),
     egress,
-    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition),
+    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition, self, contradicted),
     effectEvidence,
     recognition,
     signals,
+    ...(self ? { selfDescription: self } : {}),
   };
 }
 
-function deriveReversibility(effects: Set<EffectKind>): ReversibilityName {
+/** Effects a read-only hint cannot honestly sit next to. */
+const CONSEQUENTIAL = new Set<EffectKind>(['delete', 'network_egress', 'message_send', 'spend', 'credential_access']);
+
+function deriveReversibility(effects: Set<EffectKind>, self?: SelfDescription): ReversibilityName {
+  // The server's word can make a call look harder to undo, never easier.
+  if (self?.destructive === true) return 'irreversible';
   // Anything that has already left the machine, been spent, or been executed
   // cannot be walked back by this system, whatever the tool offers.
   if (
@@ -424,6 +455,8 @@ function deriveSeverity(
   hasArbitraryCommand: boolean,
   canDeclare: boolean,
   recognition: Recognition,
+  self: SelfDescription | undefined,
+  contradicted: EffectKind[],
 ): SeverityName {
   let rank: number = SEVERITY.none;
   const raise = (to: SeverityName) => {
@@ -477,6 +510,16 @@ function deriveSeverity(
     canDeclare && [...effects].some((e) => !declared.has(e) && e !== 'read' && e !== 'write');
   if (undeclaredConsequential) raise(rank >= SEVERITY.high ? 'critical' : 'high');
   void signals;
+
+  // The server's own hints, one direction only. A tool the vocabulary cannot
+  // place, whose server calls it destructive or open-world, is not "unknown
+  // at moderate" any more: the one thing known about it is bad. A read-only
+  // hint on a tool derived to delete, send, spend or read credentials is a
+  // discrepancy between what the server says and what it offers, and worth a
+  // level in its own right. Nothing here lowers.
+  if (recognition.status === 'unrecognised' && self?.destructive === true) raise('high');
+  if (recognition.status === 'unrecognised' && self?.openWorld === true) raise('high');
+  if (contradicted.length > 0) raise(rank >= SEVERITY.high ? 'critical' : 'high');
 
   return (Object.keys(SEVERITY) as SeverityName[]).find((k) => SEVERITY[k] === rank) ?? 'none';
 }

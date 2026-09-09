@@ -37,15 +37,40 @@ export function factualProposal(facts: DerivedFacts): ProposedConsequence {
   affectedCount: facts.affected.kind === 'unbounded' ? null : facts.affected.n,
   scopePaths: facts.targets.filter((t) => t.role === 'path' || t.role === 'glob').map((t) => t.value),
   egress: [...facts.egress],
-    risks:
-      facts.recognition.status === 'unrecognised'
+    risks: [
+      ...(facts.recognition.status === 'unrecognised'
         ? ['Nothing in the tool definition says what this does, so nothing above is a limit on it.']
-        : facts.effects.map((e) => RISK_BY_EFFECT[e]).filter((r): r is string => Boolean(r)),
+        : facts.effects.map((e) => RISK_BY_EFFECT[e]).filter((r): r is string => Boolean(r))),
+      ...(selfDescriptionRisk(facts) ? [selfDescriptionRisk(facts)!] : []),
+    ],
   });
 }
 
+/**
+ * The server's account of its own tool, quoted as such. It is shown because a
+ * person deciding deserves to know what the tool claims about itself; it is
+ * labelled because nothing here has checked it.
+ */
+function selfDescriptionRisk(facts: DerivedFacts): string | undefined {
+  const s = facts.selfDescription;
+  if (!s) return undefined;
+  const parts: string[] = [];
+  if (s.readOnly === true) parts.push('read-only');
+  if (s.readOnly === false) parts.push('able to make changes');
+  if (s.destructive === true) parts.push('destructive');
+  if (s.openWorld === true) parts.push('reaching outside its own system');
+  if (parts.length === 0) return undefined;
+  return facts.signals.some((x) => x.code === 'self_description_contradicted')
+    ? `Its server calls it ${parts.join(', ')}, and its own definition says otherwise. One of them is wrong.`
+    : `Its server describes it as ${parts.join(', ')}. That is the server’s word; nothing here has checked it.`;
+}
+
 function headlineFor(facts: DerivedFacts): string {
-  if (facts.recognition.status === 'unrecognised') return 'What this does could not be determined';
+  if (facts.recognition.status === 'unrecognised') {
+    return facts.selfDescription?.destructive === true
+      ? 'What this does could not be determined, and its server calls it destructive'
+      : 'What this does could not be determined';
+  }
   if (facts.effects.includes('spend')) return 'This moves money out of your account';
   if (facts.effects.includes('delete')) {
     return facts.affected.kind === 'unbounded'

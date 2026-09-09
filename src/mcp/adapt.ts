@@ -1,20 +1,32 @@
-import type { EffectKind, ParamSpec, ToolSchema } from '../core/types.ts';
+import type { EffectKind, ParamSpec, SelfDescription, ToolSchema } from '../core/types.ts';
 
 /**
  * Adapting a real MCP tool definition into something the deriver can reason
  * about.
  *
- * The honest problem: MCP tool definitions carry no capability annotations.
- * There is no `declaredEffects`, and nothing anywhere says which directory a
- * filesystem tool is supposed to stay inside. Everything the deriver relies on
- * has to be inferred from a name, a description and a JSON Schema — which is a
- * weaker position than the fixture catalogue, and the calibration numbers
- * should be read with that in mind.
+ * The honest problem, corrected: this file used to say MCP tool definitions
+ * carry no capability annotations. They do — since the 2025-03-26 revision a
+ * tool may carry `annotations` with four hints (readOnlyHint, destructiveHint,
+ * idempotentHint, openWorldHint), and every one of the 36 reference tools in
+ * the corpus does. What is still true: there is no `declaredEffects` in the
+ * deriver's vocabulary, nothing says which directory a filesystem tool stays
+ * inside, and the spec says clients MUST treat the hints as untrusted unless
+ * the server is. So the hints are carried as `selfDescription`: quoted,
+ * allowed to raise, never allowed to lower. Everything else is still inferred
+ * from a name, a description and a JSON Schema.
  */
 
 export interface McpToolDefinition {
   name: string;
   description?: string;
+  /** MCP tool annotations. Hints, and untrusted by the spec's own wording. */
+  annotations?: {
+    title?: string;
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
   inputSchema: {
     type: 'object';
     properties?: Record<string, { type?: string; description?: string; format?: string; items?: unknown; enum?: unknown[] }>;
@@ -117,14 +129,39 @@ export function adaptMcpTool(def: McpToolDefinition, options: AdaptOptions = {})
     };
   }
 
+  const selfDescription = selfDescriptionOf(def.annotations);
   return {
     name: def.name,
     description: def.description ?? '',
-    // MCP declares no effects. Anything supplied here came from an operator,
-    // not from the tool, and is still treated as a floor rather than a ceiling.
+    // MCP has no field for effects in the deriver's vocabulary. Anything
+    // supplied here came from an operator, not from the tool, and is treated
+    // as a floor rather than a ceiling. The tool's own hints go elsewhere.
     declaredEffects: options.declaredEffects?.[def.name],
+    ...(selfDescription ? { selfDescription } : {}),
     parameters,
   };
+}
+
+/**
+ * Only what the server actually wrote. The spec gives each hint a default
+ * (readOnly false, destructive true, idempotent false, openWorld true), and
+ * filling those in would let a server that wrote nothing "declare" that it
+ * is destructive and open-world. A default is not a statement.
+ */
+export function selfDescriptionOf(a: McpToolDefinition['annotations']): SelfDescription | undefined {
+  if (!a) return undefined;
+  const s: SelfDescription = {};
+  if (typeof a.readOnlyHint === 'boolean') s.readOnly = a.readOnlyHint;
+  if (typeof a.destructiveHint === 'boolean') s.destructive = a.destructiveHint;
+  if (typeof a.idempotentHint === 'boolean') s.idempotent = a.idempotentHint;
+  if (typeof a.openWorldHint === 'boolean') s.openWorld = a.openWorldHint;
+  return Object.keys(s).length > 0 ? s : undefined;
+}
+
+/** The same definition with the server's hints removed, for measuring what they add. */
+export function withoutAnnotations(def: McpToolDefinition): McpToolDefinition {
+  const { annotations: _dropped, ...rest } = def;
+  return rest;
 }
 
 function confinementFor(
@@ -144,7 +181,11 @@ function confinementFor(
 export function adaptationGaps(schema: ToolSchema): string[] {
   const gaps: string[] = [];
   if (!schema.declaredEffects || schema.declaredEffects.length === 0) {
-    gaps.push('No declared effects — every effect is inferred from tool text and parameter names.');
+    gaps.push(
+      schema.selfDescription
+        ? "No declared effects — every effect is inferred from tool text and parameter names. The server's annotations are quoted, not trusted."
+        : 'No declared effects — every effect is inferred from tool text and parameter names, and the server sent no annotations.',
+    );
   }
   // Only a place can have a boundary. An amount, a command or a subject name
   // has nowhere to be confined to, so its absence of one is not a gap.

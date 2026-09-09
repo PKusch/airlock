@@ -11,7 +11,8 @@
 import { readFileSync } from 'node:fs';
 
 import { deriveFacts, tokenise } from '../src/core/derive.ts';
-import { adaptMcpTool, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { adaptMcpTool, withoutAnnotations, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { SEVERITY } from '../src/core/types.ts';
 import type { EffectKind, ToolCall } from '../src/core/types.ts';
 
 const DIM = '\x1b[2m';
@@ -49,7 +50,7 @@ export function benignArgs(def: McpToolDefinition): Record<string, unknown> {
  */
 export function outcome(def: Labelled): Outcome {
   const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
-  const facts = deriveFacts(adaptMcpTool(def), call);
+  const facts = deriveFacts(adaptMcpTool(withoutAnnotations(def)), call);
   if (def.effect === null) return 'harmless';
   if (facts.recognition.status === 'unrecognised') return 'unrecognised';
   return facts.effects.includes(def.effect) ? 'caught' : 'under-read';
@@ -64,7 +65,7 @@ function report(title: string, file: string) {
   console.log(`\n${BOLD}${title}${OFF} ${DIM}(${consequential.length} consequential, ${harmless.length} harmless)${OFF}\n`);
   for (const def of tools) {
     const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
-    const facts = deriveFacts(adaptMcpTool(def), call);
+    const facts = deriveFacts(adaptMcpTool(withoutAnnotations(def)), call);
     const o = outcome(def);
     tally[o] += 1;
     const mark =
@@ -86,8 +87,56 @@ function report(title: string, file: string) {
     }).length}/${harmless.length}${OFF}`);
 }
 
+/**
+ * What the server's own hints add. Same corpus, same calls, with and without
+ * the MCP annotations each tool's author would honestly have written. The
+ * hints can only raise, so the interesting numbers are how many consequential
+ * tools reach the alarm threshold that did not before, and how many harmless
+ * ones are dragged up with them.
+ */
+export function hintsReport(tools: Labelled[]): { alarmedBefore: number; alarmedAfter: number; harmlessRaised: number; contradictions: string[] } {
+  const consequential = tools.filter((t) => t.effect !== null);
+  const harmless = tools.filter((t) => t.effect === null);
+  const sev = (def: McpToolDefinition) => {
+    const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
+    return deriveFacts(adaptMcpTool(def), call);
+  };
+  const alarms = (def: McpToolDefinition) => SEVERITY[sev(def).severity] >= SEVERITY.high;
+  return {
+    alarmedBefore: consequential.filter((t) => alarms(withoutAnnotations(t))).length,
+    alarmedAfter: consequential.filter((t) => alarms(t)).length,
+    harmlessRaised: harmless.filter((t) => alarms(t) && !alarms(withoutAnnotations(t))).length,
+    contradictions: tools.filter((t) => sev(t).signals.some((s) => s.code === 'self_description_contradicted')).map((t) => t.name),
+  };
+}
+
+function reportHints(title: string, file: string) {
+  const { tools }: { tools: Labelled[] } = JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
+  console.log(`
+${BOLD}${title}${OFF}
+`);
+  for (const def of tools) {
+    const call: ToolCall = { id: def.name, tool: def.name, args: benignArgs(def) };
+    const before = deriveFacts(adaptMcpTool(withoutAnnotations(def)), call);
+    const after = deriveFacts(adaptMcpTool(def), call);
+    const a = def.annotations ?? {};
+    const hints = [a.readOnlyHint ? 'read-only' : null, a.destructiveHint ? 'destructive' : null, a.openWorldHint ? 'open-world' : null].filter(Boolean).join(', ') || 'writes, closed';
+    const moved = before.severity !== after.severity;
+    const alarm = SEVERITY[after.severity] >= SEVERITY.high;
+    const mark = def.effect === null
+      ? (alarm ? `${RED}raised   ${OFF}` : `${DIM}harmless ${OFF}`)
+      : alarm ? (moved ? `${GREEN}alarms   ${OFF}` : `${DIM}alarmed  ${OFF}`) : `${YELLOW}still low${OFF}`;
+    console.log(`  ${mark} ${def.name.padEnd(24)} ${DIM}${hints.padEnd(28)}${OFF} ${before.severity.padEnd(9)}→ ${after.severity}${after.signals.some((s) => s.code === 'self_description_contradicted') ? `  ${RED}contradicted${OFF}` : ''}`);
+  }
+  const r = hintsReport(tools);
+  const n = tools.filter((t) => t.effect !== null).length;
+  console.log(`
+  ${BOLD}consequential at the alarm threshold${OFF}  without hints ${r.alarmedBefore}/${n}   with hints ${GREEN}${r.alarmedAfter}/${n}${OFF}   ${BOLD}harmless raised${OFF} ${r.harmlessRaised > 0 ? RED : GREEN}${r.harmlessRaised}/${tools.length - n}${OFF}`);
+}
+
 if (process.argv[1] && /unrecognised-report/.test(process.argv[1])) {
   report('First corpus — the vocabulary was extended against these words', '../corpus/unrecognised-verbs.json');
   report('Held-out corpus — written separately, not checked against the vocabulary', '../corpus/unrecognised-verbs-heldout.json');
+  reportHints("Held-out corpus with the server's own hints — what the annotations add", '../corpus/unrecognised-verbs-heldout.json');
   console.log();
 }
