@@ -1,10 +1,14 @@
 # Airlock
 
-**Consent for agent tool calls, where the consequence is derived and verified rather than narrated.**
+**Before an AI agent runs a tool, a person sees in plain words what it will do. The words are built from the facts of the call, not written by the agent, so the agent cannot talk anyone into approving it.**
 
 An agent is about to run a tool. Before it does, a person has to approve it. The
-question this project is about is what that person is shown — and whether the
-thing they are shown can be made to lie.
+question this project is about is what that person is shown, and whether the
+thing they are shown can be made to lie. The answer here: the facts (what it
+touches, how many, whether it can be undone, where data goes) are worked out in
+code; a model is only allowed to phrase them; and any phrasing that makes the
+call sound milder than the facts is thrown away and the facts are shown instead.
+The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
