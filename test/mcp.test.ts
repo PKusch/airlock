@@ -124,6 +124,26 @@ test('the proxy forwards ordinary calls and withholds dangerous ones', async () 
 });
 
 
+test("the server's own hints reach the gate through tools/list", async () => {
+  // scrub_records names no action the vocabulary knows. Without its
+  // annotations it would sit at moderate and be forwarded; the server says it
+  // is destructive, and that word travels from tools/list into the card.
+  const responses = await driveProxy([
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'scrub_records', arguments: { filter: 'status:closed' } } },
+  ]);
+  const byId = new Map(responses.map((r) => [r.id, r]));
+  assert.ok(byId.get(1).result.tools.some((t: { name: string }) => t.name === 'scrub_records'), 'tools/list passes the annotated tool through');
+
+  const withheld = byId.get(2);
+  assert.ok(withheld.error, 'withheld on the strength of the server\'s own word');
+  assert.equal(withheld.error.data.severity, 'high');
+  assert.match(withheld.error.message, /could not be determined, and its server calls it destructive/);
+  assert.match(withheld.error.message, /That is the server’s word; nothing here has checked it/);
+  assert.ok(withheld.error.data.signals.some((s: { code: string }) => s.code === 'declared_destructive'));
+  assert.ok(withheld.error.data.signals.some((s: { code: string }) => s.code === 'unrecognised_action'));
+});
+
 // ---------------------------------------------------------------------------
 // Absence of a declaration channel is not absence of a declaration.
 // ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 // A minimal stdio MCP server. Tool definitions are shaped like the real ones:
-// a name, a prose description, a JSON Schema, and no capability annotations
-// of any kind — which is the point.
+// a name, a prose description, a JSON Schema, and for one tool the four MCP
+// annotation hints, which real servers send and which the gate may only use
+// to raise. The last tool's name is outside the deriver's vocabulary on
+// purpose: the only thing the gate can know about it is what the server says.
 import { createInterface } from 'node:readline';
 
 const TOOLS = [
@@ -26,6 +28,12 @@ const TOOLS = [
       properties: { to: { type: 'string', format: 'email' }, subject: { type: 'string' }, body: { type: 'string' } },
       required: ['to', 'body'],
     },
+  },
+  {
+    name: 'scrub_records',
+    description: 'Scrubs the matching records from the archive.',
+    inputSchema: { type: 'object', properties: { filter: { type: 'string' } }, required: ['filter'] },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
 ];
 
