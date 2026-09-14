@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 65 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations
+npm test          # 76 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -25,7 +25,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 65 tests run in CI on every push and pull request, across
+The type check and all 76 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -324,10 +324,59 @@ Going back through the 31 it did not understand:
 | Names of the things acted on — `delete_entities.entityNames`, `open_nodes.names` | 2. Now given a `subject` role: not locatable, so no boundary applies, but countable. `delete_entities` on three names affects three things, and a narrator claiming one is understating. |
 | Free text and structured payloads — `write_file.content`, `edit_file.edits`, `add_observations.observations` | **11.** These could hold anything, and the gate does not look inside. This is the actual blindness. |
 
-So the honest figure is 20 of 49 roled, 18 inert, and 11 the gate cannot see
-into. `adaptationGaps()` now reports those eleven and only those, so an
-operator reading the card is told about `edits` and not about `dryRun`. The
-split is pinned in `test/real-corpus.test.ts`.
+So the honest figure was 20 of 49 roled, 18 inert, and 11 the gate could not
+see into, and `adaptationGaps()` reported those eleven and not `dryRun`.
+
+#### Inside the payloads
+
+Six of those eleven were not free text. They were lists of objects, with every
+field declared in the schema: `edit_file.edits` is a list of
+`{oldText, newText}`, and `delete_relations.relations` is a list of
+`{from, to, relationType}`. The gate read each list as one value. In one place
+that was worse than blind. The check for text addressed to a model turned every
+object into the string "[object Object]" before scanning it. An instruction in
+`write_file.content` was caught. The same instruction in
+`edit_file.edits[0].newText`, or in an observation passed to
+`add_observations`, was never looked at.
+
+So the adapter now opens a list of objects and gives each field a role. It uses
+the same token rules as a top-level parameter, plus two rules that only make
+sense inside an element: a field whose last word is `name`, and a field the
+schema describes as "the name of the entity". A bare `to` described that way is
+a name, not a recipient. A `to` described any other way is still a recipient.
+At top level `name` still gets no role, because `gzip-file-as-resource.name` is
+an output file name. The deriver walks every element, and every piece of text
+in every argument is scanned, keys included.
+
+Counted field by field, the corpus has 58 parameters:
+
+| | |
+|:--|:--|
+| Given a role | **27.** The same 20 as before, plus 7 names inside elements: the entity names in `create_entities`, `add_observations` and `delete_observations`, and both ends of a relation in `create_relations` and `delete_relations`. |
+| Numbers, booleans and fixed choices | 18, unchanged. |
+| Free text | **13.** Five top-level strings (`write_file.content`, `echo.message`, `search_nodes.query`, `simulate-research-query.topic`, `gzip-file-as-resource.name`) and eight fields inside payloads: `oldText`, `newText`, `entityType`, `relationType` twice, and three lists of observation text. |
+
+Thirteen is more than eleven, and it is less blindness. All thirteen are
+scanned for text addressed to a model. None of them gets a target: a URL typed
+into `newText` is text, and the gate does not guess a destination from it. A
+field only raises egress if the schema gives it a URL role.
+
+Names inside an element are counted once per element. `delete_relations` on
+three relations now affects 3 items. Before, it affected 0, and the card said
+"This deletes 0 item(s)". Counting the six names would say six, which describes
+entities the call leaves alone. The cost of this rule: `delete_observations` on
+one entity counts one, however many observations it removes, because those
+observations are free text and nothing in the schema says they are the things
+being counted.
+
+None of this moves an alarm. The audit is still 5 of 5 caught and 0 of 31
+false, and calibration is still 0 of 30. A test derives every real tool twice,
+with the payloads opened and closed, on ordinary arguments and again with an
+injection in every string. It holds that opening them never lowers severity,
+reversibility or the count, and never drops an effect, a destination, a signal
+or a target. `adaptationGaps()` now names the thirteen fields (`edits[].newText`)
+and no longer names a payload whose fields it reads. The split is pinned in
+`test/real-corpus.test.ts`, and the payload behaviour in `test/payloads.test.ts`.
 
 ## What is verified, and what isn't
 
@@ -341,6 +390,9 @@ split is pinned in `test/real-corpus.test.ts`.
 | The effect inference caught everything the tool really does | **Not verified, and measured to fail.** After extending the vocabulary against a first corpus (17 of 18 now caught), a held-out corpus of 22 ordinarily-named consequential tools still misses 19, and none of the new verbs fired on it. A miss is reported as *unrecognised* rather than scored as harmless, but it is still a miss. |
 | A tool the deriver cannot place is never scored as harmless | **Verified in code.** Empty inference is a named state with a `moderate` floor, and a test holds it over 50 such tools. |
 | The server's own annotations never lower severity, reversibility, effects or recognition | **Verified in code**, over the real corpus and both vocabulary corpora. They raise, contradict and are quoted, and nothing else. |
+| Text addressed to a model is flagged wherever it sits in an argument | **Verified in code**, inside lists of objects and in keys as well as in plain strings. Before, an object was scanned as "[object Object]". |
+| Reading inside structured payloads never lowers anything | **Verified in code**, over all 36 real tools, on ordinary arguments and with an injection in every string. |
+| A path, destination or name written into free text is found | **Not verified, and not attempted.** 13 of 58 real fields are free text. They are scanned for instructions and for nothing else. |
 
 `6/6 held` in the attack report means no compromised narration reached the
 human. It does **not** mean the derivation saw everything the tool can do.
@@ -406,12 +458,19 @@ approving, and was previously unsayable.
   suite runs against a *fully compromised* narrator, which is a strictly
   stronger test than a live model that happens to behave. But it means the
   quality of real narration is unmeasured, and I am not claiming it.
-- **Eleven of 49 real parameters are payloads the gate cannot see into.**
-  Measured across the 36-tool corpus: 20 get a role, 18 are numbers, booleans
-  or fixed choices that cannot carry a target, and the remaining 11 —
-  `edit_file.edits`, `add_observations.observations`, `write_file.content` —
-  are free text or structured data treated as opaque. `adaptationGaps()`
-  reports exactly those eleven, but the gate is blind to what is inside them.
+- **Thirteen of 58 real fields are free text the gate reads only for
+  instructions.** Measured across the 36-tool corpus, with the fields inside
+  the six lists of objects counted one by one: 27 get a role, 18 are numbers,
+  booleans or fixed choices that cannot carry a target, and 13 —
+  `write_file.content`, `edit_file.edits[].newText`,
+  `add_observations.observations[].contents` — are free text. All thirteen are
+  scanned for text addressed to a model. None is searched for a path, a
+  destination or a name, so a URL written into `newText` does not show as
+  egress. Names inside an element count once per element, so removing three
+  observations from one entity counts as one. An object parameter that is not
+  a list, or a list whose elements declare no fields, is still read whole; the
+  corpus has neither, and a wider corpus would. An argument the schema does not
+  declare is not read at all.
 - **Effects are inferred from a verb vocabulary.** A tool whose leading verb is
   not in `VERB_EFFECTS` and whose description avoids the tell patterns is scored
   on its parameters alone, and if those say nothing either it is reported as
@@ -448,6 +507,7 @@ src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
 corpus/                  36 real MCP definitions with ground truth; two corpora (22 + 28 tools) of verbs the vocabulary did not know
 test/gate.test.ts        attack suite + calibration
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
+test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
 ```
