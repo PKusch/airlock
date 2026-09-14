@@ -137,6 +137,36 @@ const REVERSIBILITY_PROSE: Record<string, string> = {
 };
 
 /**
+ * The items as a person reads them. Names found in the same element are shown
+ * together, because they are counted together: a relation between 'alice' and
+ * 'bob' is one item, and listing the two names apart would show six names
+ * under "3 items".
+ */
+function namedItems(items: DerivedFacts['targets']): string[] {
+  const out: string[] = [];
+  const groups = new Map<string, string[]>();
+  for (const t of items) {
+    if (t.role === 'subject' && t.item) {
+      const group = groups.get(t.item);
+      if (group) {
+        group.push(`'${t.value}'`);
+        continue;
+      }
+      const fresh = [`'${t.value}'`];
+      groups.set(t.item, fresh);
+      out.push(t.item);
+    } else {
+      out.push(`'${t.value}'`);
+    }
+  }
+  return out.map((entry) => {
+    const group = groups.get(entry);
+    if (!group) return entry;
+    return group.length === 1 ? group[0] : `(${group.join(', ')})`;
+  });
+}
+
+/**
  * Lines derived wholly from facts. No part of this depends on the narrator,
  * which is why the rejection path can show all of it too.
  */
@@ -154,10 +184,11 @@ function factLines(facts: DerivedFacts): string[] {
 
   const items = facts.targets.filter((t) => t.role === 'path' || t.role === 'glob' || t.role === 'subject');
   if (items.length > 0) {
+    const named = namedItems(items);
     lines.push(
       facts.affected.kind === 'unbounded'
-        ? `It applies to everything matching ${items.map((p) => `'${p.value}'`).join(' and ')} — the number of items is not knowable before it runs.`
-        : `It affects ${facts.affected.n} item${facts.affected.n === 1 ? '' : 's'}: ${items.map((p) => `'${p.value}'`).join(', ')}.`,
+        ? `It applies to everything matching ${named.join(' and ')} — the number of items is not knowable before it runs.`
+        : `It affects ${facts.affected.n} item${facts.affected.n === 1 ? '' : 's'}: ${named.join(', ')}.`,
     );
   }
 

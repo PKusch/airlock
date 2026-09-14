@@ -279,85 +279,122 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
   const targets: Target[] = [];
   let isUnbounded = false;
 
-  for (const [name, spec] of Object.entries(schema.parameters)) {
+  // A role implies its effect whether or not the argument was supplied, and
+  // that holds for a field inside an element just as for a parameter.
+  const addRoleEffects = (source: string, spec: ParamSpec) => {
     const roleEffect = spec.role ? ROLE_EFFECTS[spec.role] : undefined;
-    if (roleEffect) addEffect(roleEffect, spec.role!, `parameter '${name}'`);
+    if (roleEffect) addEffect(roleEffect, spec.role!, `parameter '${source}'`);
+    for (const [field, fieldSpec] of Object.entries(spec.nested ?? {})) {
+      addRoleEffects(`${source}[].${field}`, fieldSpec);
+    }
+  };
+
+  // One concrete value of a roled parameter or field. `source` is where it
+  // sits (`path`, or `relations[2].to`), and `item` is the element it came
+  // from, if any.
+  const addTarget = (source: string, spec: ParamSpec, value: string, item?: string) => {
+    const role = spec.role!;
+    let confinement: Confinement = { status: 'undeclared' };
+
+    if (role === 'path' || role === 'glob') {
+      if (spec.confinedTo) {
+        const check = escapesConfinementResolved(value, spec.confinedTo, options.resolver);
+        if (check.escapes) {
+          confinement = { status: 'escaped', boundary: spec.confinedTo, via: check.via };
+          if (check.via === 'filesystem') {
+            signals.push({
+              code: 'symlink_escape',
+              detail: `'${value}' stays inside '${spec.confinedTo}' as written, but resolves outside it on disk`,
+              source,
+            });
+          }
+        } else if (!check.resolved && options.resolver) {
+          // The boundary exists but could not be tested. That is a third
+          // outcome, and it is not 'inside'.
+          confinement = {
+            status: 'unverifiable',
+            boundary: spec.confinedTo,
+            reason: 'path could not be resolved on disk',
+          };
+          signals.push({
+            code: 'unresolved_path',
+            detail: `'${value}' could not be resolved on disk — confinement was checked by string only`,
+            source,
+          });
+        } else {
+          confinement = { status: 'inside', boundary: spec.confinedTo };
+        }
+      }
+      if (role === 'glob' || GLOB_CHARS.test(value)) {
+        isUnbounded = true;
+        signals.push({
+          code: 'unbounded_target_set',
+          detail: `'${value}' is a pattern — the number of things it matches cannot be known from the call`,
+          source,
+        });
+      }
+    } else if (role === 'url' && spec.confinedTo) {
+      const host = hostOf(value);
+      confinement =
+        host === null
+          ? { status: 'unverifiable', boundary: spec.confinedTo, reason: 'no host could be parsed' }
+          : host === spec.confinedTo.toLowerCase()
+            ? { status: 'inside', boundary: spec.confinedTo }
+            : { status: 'escaped', boundary: spec.confinedTo, via: 'lexical' };
+    }
+
+    if (isViolated(confinement)) {
+      signals.push({
+        code: 'confinement_escape',
+        detail: `'${value}' resolves outside the declared boundary '${spec.confinedTo}'`,
+        source,
+      });
+    }
+
+    targets.push({ value, role, confinement, ...(item ? { item } : {}) });
+  };
+
+  // Into every element of a structured argument, reading each declared field
+  // by its role. Only a role the schema gave a field makes a target: a URL
+  // typed into `newText` is text, and guessing egress from free text would be
+  // a guess. An element that is not an object has no fields to read; it has
+  // already been scanned as text.
+  const walkElements = (label: string, fields: Record<string, ParamSpec>, raw: unknown) => {
+    const elements = Array.isArray(raw) ? raw : [raw];
+    elements.forEach((element, i) => {
+      if (!isRecord(element)) return;
+      const item = `${label}[${i}]`;
+      for (const [field, fieldSpec] of Object.entries(fields)) {
+        const value = element[field];
+        if (value === undefined || value === null) continue;
+        const source = `${item}.${field}`;
+        if (fieldSpec.role) for (const v of asValues(value)) addTarget(source, fieldSpec, v, item);
+        if (fieldSpec.nested) walkElements(source, fieldSpec.nested, value);
+      }
+    });
+  };
+
+  for (const [name, spec] of Object.entries(schema.parameters)) {
+    addRoleEffects(name, spec);
 
     const raw = call.args[name];
     if (raw === undefined || raw === null) continue;
 
-    const values = Array.isArray(raw) ? raw.map(String) : [String(raw)];
-
-    if (INSTRUCTION_SHAPED.test(values.join(' '))) {
+    const shaped = instructionShapedAt(name, raw);
+    if (shaped) {
+      const deeper = shaped.filter((at) => at !== name);
       signals.push({
         code: 'instruction_shaped_argument',
-        detail: `Argument '${name}' contains text addressed to a model rather than data`,
+        detail:
+          deeper.length > 0
+            ? `Argument '${name}' contains text addressed to a model rather than data, at ${deeper.join(', ')}`
+            : `Argument '${name}' contains text addressed to a model rather than data`,
         source: name,
       });
     }
 
-    if (!spec.role) continue;
-
-    for (const value of values) {
-      let confinement: Confinement = { status: 'undeclared' };
-
-      if (spec.role === 'path' || spec.role === 'glob') {
-        if (spec.confinedTo) {
-          const check = escapesConfinementResolved(value, spec.confinedTo, options.resolver);
-          if (check.escapes) {
-            confinement = { status: 'escaped', boundary: spec.confinedTo, via: check.via };
-            if (check.via === 'filesystem') {
-              signals.push({
-                code: 'symlink_escape',
-                detail: `'${value}' stays inside '${spec.confinedTo}' as written, but resolves outside it on disk`,
-                source: name,
-              });
-            }
-          } else if (!check.resolved && options.resolver) {
-            // The boundary exists but could not be tested. That is a third
-            // outcome, and it is not 'inside'.
-            confinement = {
-              status: 'unverifiable',
-              boundary: spec.confinedTo,
-              reason: 'path could not be resolved on disk',
-            };
-            signals.push({
-              code: 'unresolved_path',
-              detail: `'${value}' could not be resolved on disk — confinement was checked by string only`,
-              source: name,
-            });
-          } else {
-            confinement = { status: 'inside', boundary: spec.confinedTo };
-          }
-        }
-        if (spec.role === 'glob' || GLOB_CHARS.test(value)) {
-          isUnbounded = true;
-          signals.push({
-            code: 'unbounded_target_set',
-            detail: `'${value}' is a pattern — the number of things it matches cannot be known from the call`,
-            source: name,
-          });
-        }
-      } else if (spec.role === 'url' && spec.confinedTo) {
-        const host = hostOf(value);
-        confinement =
-          host === null
-            ? { status: 'unverifiable', boundary: spec.confinedTo, reason: 'no host could be parsed' }
-            : host === spec.confinedTo.toLowerCase()
-              ? { status: 'inside', boundary: spec.confinedTo }
-              : { status: 'escaped', boundary: spec.confinedTo, via: 'lexical' };
-      }
-
-      if (isViolated(confinement)) {
-        signals.push({
-          code: 'confinement_escape',
-          detail: `'${value}' resolves outside the declared boundary '${spec.confinedTo}'`,
-          source: name,
-        });
-      }
-
-      targets.push({ value, role: spec.role, confinement });
-    }
+    if (spec.role) for (const value of asValues(raw)) addTarget(name, spec, value);
+    if (spec.nested) walkElements(name, spec.nested, raw);
   }
 
   const egress = targets.filter((t) => t.role === 'url' || t.role === 'recipient').map((t) => t.value);
@@ -414,7 +451,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     // same value made a payment read as touching an unbounded set of files.
     // A subject is counted alongside a path: `delete_entities` on three names
     // affects three things, and a narrator claiming one is understating.
-    affected: isUnbounded ? UNBOUNDED : exactly(targets.filter((t) => t.role === 'path' || t.role === 'subject').length),
+    affected: isUnbounded ? UNBOUNDED : exactly(countAffected(targets)),
     reversibility: deriveReversibility(effects, self),
     egress,
     severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition, self, contradicted),
@@ -423,6 +460,90 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     signals,
     ...(self ? { selfDescription: self } : {}),
   };
+}
+
+/**
+ * How many things a call acts on.
+ *
+ * A path counts once, wherever it was found. A subject named directly in a
+ * parameter counts once, as before. A subject found inside an element counts
+ * once per element: `delete_relations` on three relations removes three
+ * relations, and the six names at their ends identify those three rather than
+ * being six things removed. Counting the names would say six, which is too
+ * high and describes entities the call leaves alone. The cost of this rule is
+ * named rather than hidden: `delete_observations` on one entity counts one,
+ * however many observations inside it are removed, because those are free
+ * text and nothing in the schema marks them as the things being counted.
+ */
+function countAffected(targets: Target[]): number {
+  let n = 0;
+  const elements = new Set<string>();
+  for (const t of targets) {
+    if (t.role === 'path') n++;
+    else if (t.role === 'subject') {
+      if (t.item) elements.add(t.item);
+      else n++;
+    }
+  }
+  return n + elements.size;
+}
+
+/** The values of a roled argument, read exactly as they always were. */
+function asValues(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.map(String) : [String(raw)];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Every piece of text in an argument, however deep, with where it sits.
+ *
+ * The scan used to read `String(value)`, which turns an object into
+ * "[object Object]". Plain strings and lists of strings were scanned; an
+ * instruction inside `edits[0].newText` or an observation's `contents` was
+ * never looked at. Keys are text too, so they are included.
+ */
+function textLeaves(
+  value: unknown,
+  at: string,
+  out: Array<{ at: string; text: string }> = [],
+  seen: WeakSet<object> = new WeakSet(),
+): Array<{ at: string; text: string }> {
+  if (typeof value === 'string') {
+    out.push({ at, text: value });
+  } else if (Array.isArray(value)) {
+    if (seen.has(value)) return out;
+    seen.add(value);
+    value.forEach((v, i) => textLeaves(v, `${at}[${i}]`, out, seen));
+  } else if (isRecord(value)) {
+    if (seen.has(value)) return out;
+    seen.add(value);
+    for (const [key, v] of Object.entries(value)) {
+      out.push({ at: `${at}.${key}`, text: key });
+      textLeaves(v, `${at}.${key}`, out, seen);
+    }
+  } else if (value !== undefined && value !== null) {
+    out.push({ at, text: String(value) });
+  }
+  return out;
+}
+
+/**
+ * Where an argument holds instruction-shaped text, or `undefined` if nowhere.
+ * Three readings, and any one is enough: each piece of text alone; all of it
+ * joined, so a phrase split across two list items is still seen; and the old
+ * stringified reading, kept so that nothing it ever caught can stop being
+ * caught.
+ */
+function instructionShapedAt(name: string, raw: unknown): string[] | undefined {
+  const leaves = textLeaves(raw, name);
+  const hits = [...new Set(leaves.filter((l) => INSTRUCTION_SHAPED.test(l.text)).map((l) => l.at))];
+  if (hits.length > 0) return hits;
+  const joined = leaves.map((l) => l.text).join(' ');
+  if (INSTRUCTION_SHAPED.test(joined) || INSTRUCTION_SHAPED.test(asValues(raw).join(' '))) return [name];
+  return undefined;
 }
 
 /** Effects a read-only hint cannot honestly sit next to. */

@@ -91,6 +91,15 @@ export interface ParamSpec {
    * anything and is simply not understood. The gap report tells them apart.
    */
   inert?: boolean;
+  /**
+   * The declared fields of each element, when the parameter is an array of
+   * objects — `edit_file.edits` is a list of `{ oldText, newText }`. Each field
+   * is a parameter in its own right, with its own role, and the deriver walks
+   * into every element of the argument to read them. Absent for everything
+   * else, so a caller that never looks here sees the parameter exactly as it
+   * did before this existed.
+   */
+  nested?: Record<string, ParamSpec>;
 }
 
 /** A concrete pending invocation. Arguments are attacker-controlled. */
@@ -109,6 +118,13 @@ export interface Target {
    * bug of this shape came from one — see `constraint.ts`.
    */
   confinement: Confinement;
+  /**
+   * The array element this target was found in, such as `relations[2]`, when
+   * it came from inside a structured payload. Absent for a top-level argument.
+   * Subjects are counted per element: a relation is one thing, whichever
+   * two names identify it.
+   */
+  item?: string;
 }
 
 /** Why the deriver concluded something. Every fact carries its own provenance. */

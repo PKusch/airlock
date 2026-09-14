@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 
 import { deriveFacts } from '../src/core/derive.ts';
-import { adaptMcpTool, withoutAnnotations, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { adaptMcpTool, parameterLeaves, withoutAnnotations, type McpToolDefinition } from '../src/mcp/adapt.ts';
 import { SEVERITY, type SeverityName, type ToolCall } from '../src/core/types.ts';
 
 const DIM = '\x1b[2m';
@@ -57,6 +57,8 @@ function benignArgs(def: McpToolDefinition): Record<string, unknown> {
   return args;
 }
 
+let topLevel = 0;
+let structured = 0;
 let params = 0;
 let roled = 0;
 let inert = 0;
@@ -70,14 +72,14 @@ const opaque: string[] = [];
 for (const server of servers) {
   for (const def of server.tools) {
     const schema = adaptMcpTool(def, { confinement: CONFINEMENT });
-    const names = Object.keys(schema.parameters);
-    params += names.length;
-    const withRole = names.filter((n) => schema.parameters[n].role);
-    roled += withRole.length;
-    for (const n of names) {
-      const p = schema.parameters[n];
-      if (p.role) continue;
-      if (p.inert) inert++;
+    topLevel += Object.keys(schema.parameters).length;
+    structured += Object.values(schema.parameters).filter((p) => p.nested).length;
+    // Counted field by field: a list of objects whose fields are declared is
+    // read inside, so each field is a parameter here.
+    for (const [n, p] of parameterLeaves(schema.parameters)) {
+      params++;
+      if (p.role) roled++;
+      else if (p.inert) inert++;
       else opaque.push(`${def.name}.${n}`);
     }
 
@@ -108,9 +110,10 @@ const rate = (falsePositives.length / benignTotal) * 100;
 console.log(`\n${BOLD}${total} real MCP tool definitions${OFF} ${DIM}(filesystem, memory, everything)${OFF}\n`);
 
 console.log(`${BOLD}Role inference${OFF}`);
-console.log(`  ${roled}/${params} parameters got a role ${DIM}(${Math.round((roled / params) * 100)}%)${OFF}`);
+console.log(`  ${topLevel} parameters, ${structured} of them lists of objects ${DIM}(read field by field: ${params} in all)${OFF}`);
+console.log(`  ${roled}/${params} got a role ${DIM}(${Math.round((roled / params) * 100)}%)${OFF}`);
 console.log(`  ${inert} cannot carry a target ${DIM}(number, boolean or fixed choice)${OFF}`);
-console.log(`  ${opaque.length} treated as opaque data ${DIM}(free text or structured payload the gate does not look inside)${OFF}\n`);
+console.log(`  ${opaque.length} treated as opaque data ${DIM}(free text: scanned for instructions, nothing it points at is checked)${OFF}\n`);
 
 console.log(`${BOLD}Severity on ordinary, in-bounds calls${OFF}`);
 for (const level of Object.keys(tally) as SeverityName[]) {

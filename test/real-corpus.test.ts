@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { deriveFacts, tokenise } from '../src/core/derive.ts';
-import { adaptMcpTool, adaptationGaps, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { adaptMcpTool, adaptationGaps, parameterLeaves, type McpToolDefinition } from '../src/mcp/adapt.ts';
 import { SEVERITY, type ToolCall } from '../src/core/types.ts';
 
 /**
@@ -117,22 +117,34 @@ test('a subject is counted even though it cannot be located', () => {
 
 test('the parameter split is the one the README reports', () => {
   // Three kinds: given a role; inert, because a number, boolean or fixed choice
-  // cannot carry a target; opaque, because free text or a payload could and
-  // the gate does not look inside. Only the last is blindness.
-  let roled = 0, inert = 0;
+  // cannot carry a target; opaque, because free text could and nothing it
+  // points at is checked. Only the last is blindness. A list of objects is not
+  // counted as one parameter any more: its declared fields are read, so each
+  // field is counted instead.
+  let topLevel = 0, structured = 0, roled = 0, inert = 0, nestedRoled = 0;
   const opaque: string[] = [];
   for (const def of allTools) {
-    for (const [name, p] of Object.entries(adaptMcpTool(def).parameters)) {
-      if (p.role) roled++;
-      else if (p.inert) inert++;
+    const parameters = adaptMcpTool(def).parameters;
+    topLevel += Object.keys(parameters).length;
+    structured += Object.values(parameters).filter((p) => p.nested).length;
+    for (const [name, p] of parameterLeaves(parameters)) {
+      if (p.role) {
+        roled++;
+        if (name.includes('[]')) nestedRoled++;
+      } else if (p.inert) inert++;
       else opaque.push(`${def.name}.${name}`);
     }
   }
-  assert.equal(roled + inert + opaque.length, 49);
-  assert.equal(roled, 20);
+  assert.equal(topLevel, 49);
+  assert.equal(structured, 6);
+  assert.equal(roled + inert + opaque.length, 58, '43 plain parameters plus 15 fields inside the six payloads');
+  assert.equal(roled, 27);
+  assert.equal(nestedRoled, 7, 'every one a subject: an entity name or the end of a relation');
   assert.equal(inert, 18);
-  assert.equal(opaque.length, 11);
-  assert.ok(opaque.includes('write_file.content') && opaque.includes('edit_file.edits'));
+  assert.equal(opaque.length, 13);
+  assert.ok(opaque.includes('write_file.content') && opaque.includes('edit_file.edits[].newText'));
+  assert.ok(!opaque.includes('edit_file.edits'), 'a payload whose fields are read is not opaque as a whole');
+  assert.ok(!opaque.includes('create_relations.relations[].to'), 'the end of a relation is a name, and counted');
   assert.ok(!opaque.includes('read_file.head'), 'a line count is inert, not opaque');
 });
 
