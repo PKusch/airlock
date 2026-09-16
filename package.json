@@ -15,14 +15,14 @@
     "introspect": "node scripts/introspect.mjs"
   },
   "dependencies": {
+    "lucide-react": "^0.546.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "lucide-react": "^0.546.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/server-everything": "^2025.8.18",
-    "@modelcontextprotocol/server-filesystem": "^2025.8.21",
-    "@modelcontextprotocol/server-memory": "^2025.9.25",
+    "@modelcontextprotocol/server-everything": "^2026.8.31",
+    "@modelcontextprotocol/server-filesystem": "^2026.8.31",
+    "@modelcontextprotocol/server-memory": "^2026.8.31",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
