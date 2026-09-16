@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 76 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads
+npm test          # 85 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -25,7 +25,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 76 tests run in CI on every push and pull request, across
+The type check and all 85 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -303,14 +303,83 @@ annotate it:
 | With the server's hints | **14** |
 | Harmless tools raised | 1 of 6 — `measure_latency`, read-only and open-world, which is the same call the gate already stops for `fetch_docs` |
 
-Eight consequential tools stay at `moderate` with hints: `suspend_account`,
+Eight consequential tools stayed at `moderate` with hints: `suspend_account`,
 `disable_user`, `grant_role`, `impersonate_user`, `promote_release`,
 `restart_service`, `scale_cluster`, `escalate_ticket`. Every one is a write
 that is not destructive and does not leave its own system, which is the exact
-shape MCP's four hints cannot distinguish from a harmless write. Two of them
-are privilege changes, and there is no hint for that. So the declaration
-channel closes most of the vocabulary gap and none of *that* one, and the
-honest reading of the table is 14, not 22.
+shape MCP's four hints cannot distinguish from a harmless write. Two of them —
+`grant_role` and `impersonate_user` — are privilege changes, and there was no
+hint for that. The declaration channel closed most of the vocabulary gap and
+none of *that* one. **What closed it, and what still doesn't, is next.**
+
+### Privilege changes
+
+MCP's four hints describe what a call does to *data* — is it destructive,
+does it repeat safely, does it leave the tool's own system. None of them has
+a concept of who is allowed to do something afterward, or whose identity a
+call runs as. `grant_role` and `impersonate_user` are both, honestly,
+`readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false` — a
+role grant does not destroy anything and stays inside one system, and neither
+does issuing a session that acts as someone else. That is a true statement
+about both tools and exactly the wrong thing for a person to be told, because
+"nothing was destroyed" and "nobody's access changed" are different claims.
+
+So this needed a second signal, independent of `self_description_contradicted`
+— that one only fires where a server's hints disagree with its own schema,
+and both of these tools' hints agree with their schemas perfectly. It has to
+come from somewhere else entirely: the tool's own name, description and
+parameter roles, the same three places every other inference in `derive.ts`
+already reads, checked for a vocabulary of privilege rather than a vocabulary
+of effects.
+
+Two independent things have to agree before it fires. A verb —
+`grant`, `revoke`, `assign`, `reassign`, `elevate`, `de-escalate`,
+`impersonate` — from the tool's name or description, **and**, separately,
+either a privilege noun (`role`, `permission`, `scope`, `admin`, `owner`,
+`access level`) nearby, an "acts as" phrase, or a parameter whose name reads
+as a role or permission (`role`, `permission`, `scope` — a new `privilege`
+value on `ParamSpec.role`, using the same nested-element walk that already
+reads `edits[].newText` and `relations[].to`, so a bulk `assign_roles` call
+with `assignments: [{ principal, role }]` is caught the same way a top-level
+parameter is). The verb alone is not enough: `promote_release` and
+`escalate_ticket` are two of the six writes that stay at `moderate` below,
+and requiring `de-` immediately before `escalate` is what keeps the second of
+those out even though "escalate" alone reads like an alarming word. The noun
+alone is not enough either — `get_file_info` describes itself as returning
+"permissions" and stays unmatched, because it has no privilege verb.
+
+Where it fires, it is a floor: `raise('high')`, the same shape as the
+`unrecognised` floor at `moderate`, and independent of every other rule in
+the ladder — it does not need a confined boundary escaped or an undeclared
+effect. It never lowers anything, and it fires with a server's annotations
+present, absent, or honestly claiming the opposite.
+
+| held-out, 22 consequential | at the alarm threshold |
+|:--|:--|
+| Vocabulary alone, no hints, no privilege detector | 3 |
+| Vocabulary alone, with the privilege detector | **5** |
+| With the server's hints *and* the privilege detector | **16** |
+| Harmless tools raised | still 1 of 6 — `measure_latency`, unchanged |
+
+`grant_role` and `impersonate_user` reach `high` on their own, with no
+annotations in play at all — the two rows above both already count them. Six
+of the original eight are unchanged, because they are not privilege changes:
+`suspend_account`, `disable_user`, `promote_release`, `restart_service`,
+`scale_cluster`, `escalate_ticket`. Nothing that was already at `high` or
+above moved, on any of the 22 held-out tools, the 22 first-corpus tools, or
+the 36 real ones — `test/annotations.test.ts` and `test/privilege.test.ts`
+hold both directions, and `npm run calibrate` / `npm run audit` are unchanged
+at 0% false alarms and 5/5 caught, so nothing ordinary was newly interrupted.
+
+**What still slips through.** This is a vocabulary, like the verb list it
+sits beside, and the same honesty applies: a privilege change worded outside
+it is invisible to it. `revoke_access` (first corpus) is caught by it too,
+incidentally, because "revoke" and "access" both happen to be in the list —
+but a tool named `set_clearance` or described as "moves a user to the
+finance group" uses neither a listed verb nor a listed noun, and would read
+as an ordinary write. And a privilege change that is also destructive or
+open-world was already caught before this existed; this signal only matters
+for the honestly-boring middle the table above measures.
 
 ### What the parameters carry
 
@@ -393,6 +462,7 @@ and no longer names a payload whose fields it reads. The split is pinned in
 | Text addressed to a model is flagged wherever it sits in an argument | **Verified in code**, inside lists of objects and in keys as well as in plain strings. Before, an object was scanned as "[object Object]". |
 | Reading inside structured payloads never lowers anything | **Verified in code**, over all 36 real tools, on ordinary arguments and with an injection in every string. |
 | A path, destination or name written into free text is found | **Not verified, and not attempted.** 13 of 58 real fields are free text. They are scanned for instructions and for nothing else. |
+| A privilege change is flagged even when the server's hints honestly call it harmless | **Verified in code**, for `grant_role` and `impersonate_user` specifically, with and without annotations, and never fires on a harmless write in any corpus. Not a general capability — see *Privilege changes*: it is a second vocabulary, and a privilege change worded outside it is missed the same way an unrecognised effect verb is. |
 
 `6/6 held` in the attack report means no compromised narration reached the
 human. It does **not** mean the derivation saw everything the tool can do.
@@ -445,8 +515,13 @@ approving, and was previously unsayable.
   description give it away, and that is measured above at 19 misses in 22 on a
   held-out corpus — extending the vocabulary closed the first corpus and bought
   nothing on the second. MCP's tool annotations, used only to raise, take that
-  to 14 of 22 and cannot see a non-destructive write. A signature over a
-  reviewed manifest would be the actual fix.
+  to 14 of 22; a second, independent vocabulary for privilege verbs and nouns
+  (see *Privilege changes*) adds `grant_role` and `impersonate_user`, taking
+  it to 16 of 22. Six non-destructive, closed-world writes are still
+  unreached, and so is any privilege change worded outside that second
+  vocabulary too — `revoke_access` is caught by luck of wording, not by
+  anything that would generalise. A signature over a reviewed manifest would
+  be the actual fix.
 - **Path confinement needs a resolver to be sound.** With `nodeResolver`
   supplied, symlink escapes are caught against a real filesystem and an
   unresolvable path is reported as *unknown* rather than safe. Without one — in
@@ -508,6 +583,7 @@ corpus/                  36 real MCP definitions with ground truth; two corpora 
 test/gate.test.ts        attack suite + calibration
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
+test/privilege.test.ts   privilege changes: a floor independent of the server's hints
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
 ```

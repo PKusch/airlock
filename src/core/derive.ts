@@ -417,6 +417,18 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     });
   }
 
+  // Independent of recognition and of the effect vocabulary above: a tool can
+  // be a perfectly ordinary, recognised `write` and still be a privilege
+  // change, which is exactly the blind spot this closes.
+  const privilegeChange = detectPrivilegeChange(schema);
+  if (privilegeChange) {
+    signals.push({
+      code: 'privilege_change_detected',
+      detail: `'${schema.name}' looks like it changes who can do what, or who it acts as: ${privilegeChange.matched}`,
+      source: privilegeChange.source,
+    });
+  }
+
   // --- What the server says about itself ------------------------------------
   // Untrusted by the spec's own instruction. So it works in one direction
   // only: it can make a call look worse, contradict the derivation, and be
@@ -454,7 +466,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     affected: isUnbounded ? UNBOUNDED : exactly(countAffected(targets)),
     reversibility: deriveReversibility(effects, self),
     egress,
-    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition, self, contradicted),
+    severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition, self, contradicted, Boolean(privilegeChange)),
     effectEvidence,
     recognition,
     signals,
@@ -549,6 +561,65 @@ function instructionShapedAt(name: string, raw: unknown): string[] | undefined {
 /** Effects a read-only hint cannot honestly sit next to. */
 const CONSEQUENTIAL = new Set<EffectKind>(['delete', 'network_egress', 'message_send', 'spend', 'credential_access']);
 
+/**
+ * Privilege-change detection, held apart from `self_description_contradicted`
+ * on purpose. That signal only exists where a server's hints disagree with
+ * its own schema; it says nothing about a tool the server honestly calls
+ * non-destructive and closed-world, because granting a role or acting as
+ * someone else is neither of those things in the vocabulary those two hints
+ * speak. MCP's four annotations describe what a call does to data. None of
+ * them has a concept of who is allowed to do it afterward, or whose identity
+ * the call runs as — so this looks at the tool's own name, description and
+ * parameter roles instead, the same places every other inference in this file
+ * already looks, and it fires whether or not the server said anything at all.
+ */
+const PRIVILEGE_VERB_TELL = /\b(grants?|revokes?|assigns?|reassigns?|unassigns?|elevates?|de[- ]?escalates?|impersonates?)\b/i;
+const PRIVILEGE_NOUN_TELL = /\b(roles?|permissions?|scopes?|admins?|administrators?|owners?|privileges?|access(?:[- ]?level)?)\b/i;
+const ACTS_AS_TELL = /\bacts? as\b|\bsigns? in as\b|\blogs? in as\b|\bassumes? the identity of\b/i;
+
+/** The first parameter, or field nested inside one, given the `privilege` role. */
+function privilegeRoleParam(parameters: Record<string, ParamSpec>): string | undefined {
+  for (const [name, spec] of Object.entries(parameters)) {
+    if (spec.role === 'privilege') return name;
+    if (spec.nested) {
+      const inner = privilegeRoleParam(spec.nested);
+      if (inner) return `${name}[].${inner}`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A tool plausibly changes who can do what, or who it acts as. Two
+ * independent things have to agree: a verb from the privilege vocabulary
+ * (`grant`, `revoke`, `impersonate`...) and, separately, either a privilege
+ * noun nearby, an "acts as" phrase, or a parameter named the way a role or
+ * permission is named. The verb alone is not enough — `promote_release` and
+ * `escalate_ticket` have nothing to do with access, and requiring `de-`
+ * before `escalate` is what keeps the second one out. The noun alone is not
+ * enough either, or a `permissions` field on a plain file-info reader, or a
+ * `role` filter on a list call, would fire it by itself.
+ */
+function detectPrivilegeChange(schema: ToolSchema): { matched: string; source: string } | undefined {
+  const nameText = tokenise(schema.name).join(' ');
+  const verb = PRIVILEGE_VERB_TELL.exec(nameText) ?? PRIVILEGE_VERB_TELL.exec(schema.description);
+  if (!verb) return undefined;
+
+  const nameNoun = PRIVILEGE_NOUN_TELL.exec(nameText);
+  if (nameNoun) return { matched: `'${verb[0]}' in the tool name, alongside '${nameNoun[0]}'`, source: 'tool name' };
+
+  const descNoun = PRIVILEGE_NOUN_TELL.exec(schema.description);
+  if (descNoun) return { matched: `'${verb[0]}', and '${descNoun[0]}' in the description`, source: 'description' };
+
+  const actsAs = ACTS_AS_TELL.exec(schema.description) ?? ACTS_AS_TELL.exec(nameText);
+  if (actsAs) return { matched: `'${verb[0]}', and '${actsAs[0]}' in the description`, source: 'description' };
+
+  const param = privilegeRoleParam(schema.parameters);
+  if (param) return { matched: `'${verb[0]}', with a role/permission/scope parameter '${param}'`, source: `parameter '${param}'` };
+
+  return undefined;
+}
+
 function deriveReversibility(effects: Set<EffectKind>, self?: SelfDescription): ReversibilityName {
   // The server's word can make a call look harder to undo, never easier.
   if (self?.destructive === true) return 'irreversible';
@@ -578,6 +649,7 @@ function deriveSeverity(
   recognition: Recognition,
   self: SelfDescription | undefined,
   contradicted: EffectKind[],
+  privilegeChange: boolean,
 ): SeverityName {
   let rank: number = SEVERITY.none;
   const raise = (to: SeverityName) => {
@@ -641,6 +713,15 @@ function deriveSeverity(
   if (recognition.status === 'unrecognised' && self?.destructive === true) raise('high');
   if (recognition.status === 'unrecognised' && self?.openWorld === true) raise('high');
   if (contradicted.length > 0) raise(rank >= SEVERITY.high ? 'critical' : 'high');
+
+  // A floor, not a bonus on top of everything above — the same shape as the
+  // `unrecognised` floor at `moderate`. A non-destructive, closed-world write
+  // that grants a role or assumes someone else's identity is precisely the
+  // call four true/false hints cannot tell apart from an ordinary one, and it
+  // does not need a confined boundary escaped or an undeclared effect to be
+  // worth stopping for. This never lowers `critical` back down; `raise` only
+  // moves the rank up.
+  if (privilegeChange) raise('high');
 
   return (Object.keys(SEVERITY) as SeverityName[]).find((k) => SEVERITY[k] === rank) ?? 'none';
 }

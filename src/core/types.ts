@@ -81,7 +81,7 @@ export interface ParamSpec {
    * `subject` names the things the tool acts on without locating them — entity
    * names, record ids — so the call can at least be counted, if not confined.
    */
-  role?: 'path' | 'glob' | 'url' | 'recipient' | 'amount' | 'command' | 'secret' | 'subject';
+  role?: 'path' | 'glob' | 'url' | 'recipient' | 'amount' | 'command' | 'secret' | 'subject' | 'privilege';
   /** The directory or host the tool claims to confine itself to. */
   confinedTo?: string;
   /**

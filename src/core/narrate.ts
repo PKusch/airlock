@@ -42,8 +42,19 @@ export function factualProposal(facts: DerivedFacts): ProposedConsequence {
         ? ['Nothing in the tool definition says what this does, so nothing above is a limit on it.']
         : facts.effects.map((e) => RISK_BY_EFFECT[e]).filter((r): r is string => Boolean(r))),
       ...(selfDescriptionRisk(facts) ? [selfDescriptionRisk(facts)!] : []),
+      ...(privilegeChangeRisk(facts) ? [privilegeChangeRisk(facts)!] : []),
     ],
   });
+}
+
+/**
+ * Shown regardless of what the server's hints say, because a privilege
+ * change is exactly the call that can be honestly annotated non-destructive
+ * and closed-world while still being the thing worth stopping for.
+ */
+function privilegeChangeRisk(facts: DerivedFacts): string | undefined {
+  if (!facts.signals.some((s) => s.code === 'privilege_change_detected')) return undefined;
+  return 'If this is wrong, whoever it names keeps that access, or that identity, until someone with the power to undo it does.';
 }
 
 /**

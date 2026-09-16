@@ -98,15 +98,21 @@ test('real corpus: every tool is annotated, no alarm changes, one contradiction'
 });
 
 test('held-out corpus: what the hints buy, pinned', () => {
+  // grant_role and impersonate_user now reach `high` via the privilege-change
+  // detector (see derive.test.ts), independently of any annotation — so they
+  // count toward `alarmedBefore` as well as `alarmedAfter`, and 2 fewer tools
+  // are left at `still moderate` below.
   const r = hintsReport(heldOut);
-  assert.equal(r.alarmedBefore, 3);
-  assert.equal(r.alarmedAfter, 14);
+  assert.equal(r.alarmedBefore, 5);
+  assert.equal(r.alarmedAfter, 16);
   assert.equal(r.harmlessRaised, 1); // measure_latency: read-only, open-world — the same call the gate already stops for fetch_docs
   assert.deepEqual(r.contradictions, ['reveal_secret']);
-  // What the hints cannot say: a write that is not destructive and stays home.
-  // grant_role and impersonate_user are privilege changes, and MCP has no hint for that.
+  // What the hints still cannot say, even with the privilege-change detector:
+  // six non-destructive, closed-world writes that are not privilege changes
+  // either — MCP's four hints have no concept of "who can do what" and this
+  // detector only fires where the tool's own words plausibly claim one.
   const still = heldOut.filter((t) => t.effect !== null && SEVERITY[facts(t).severity] < SEVERITY.high).map((t) => t.name).sort();
-  assert.deepEqual(still, ['disable_user', 'escalate_ticket', 'grant_role', 'impersonate_user', 'promote_release', 'restart_service', 'scale_cluster', 'suspend_account']);
+  assert.deepEqual(still, ['disable_user', 'escalate_ticket', 'promote_release', 'restart_service', 'scale_cluster', 'suspend_account']);
 });
 
 test('gate: an annotated unrecognised destructive tool requires approval at the default threshold', async () => {

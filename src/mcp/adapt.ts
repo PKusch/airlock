@@ -54,6 +54,12 @@ export interface McpToolDefinition {
  */
 const ROLE_TOKENS: Array<[NonNullable<ParamSpec['role']>, Set<string>]> = [
   ['secret', new Set(['token', 'tokens', 'secret', 'secrets', 'apikey', 'password', 'credential', 'credentials', 'auth'])],
+  // Not routed to an effect the way `command` or `url` are — a parameter
+  // named `role` is common on perfectly ordinary reads and filters, and on
+  // its own it is too weak a signal. It only feeds the privilege-change
+  // detector in derive.ts, which requires the tool's own name or description
+  // to use a privilege verb as well. See "Privilege changes" in the README.
+  ['privilege', new Set(['role', 'roles', 'permission', 'permissions', 'scope', 'scopes'])],
   ['command', new Set(['command', 'cmd', 'script', 'shell', 'exec', 'argv'])],
   ['amount', new Set(['amount', 'price', 'cost', 'total', 'fee'])],
   ['recipient', new Set(['to', 'recipient', 'recipients', 'mailto', 'addressee', 'chatid'])],

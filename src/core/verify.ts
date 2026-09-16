@@ -237,6 +237,11 @@ function factLines(facts: DerivedFacts): string[] {
     );
   }
 
+  const privilegeChange = facts.signals.find((s) => s.code === 'privilege_change_detected');
+  if (privilegeChange) {
+    lines.push(`This looks like it changes who can do what, or who it acts as. ${privilegeChange.detail}`);
+  }
+
   return lines;
 }
 
