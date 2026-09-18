@@ -1,0 +1,36 @@
+name: A tool Airlock describes wrongly
+description: A real tool whose consent text is milder than what it does, or that Airlock does not recognise at all.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the description is milder than the truth and someone could be misled by it, please use the private route in [SECURITY.md](https://github.com/PKusch/airlock/blob/main/SECURITY.md) instead. This form is for everything else: tools the vocabulary misses, and wording that is confusing.
+  - type: input
+    id: tool
+    attributes:
+      label: Tool name and where it comes from
+      placeholder: "delete_branch, from the GitHub MCP server"
+    validations:
+      required: true
+  - type: textarea
+    id: definition
+    attributes:
+      label: The tool definition
+      description: Paste the name, description and parameters exactly as the server lists them. `npm run introspect` pulls them for the reference servers.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: shown
+    attributes:
+      label: What Airlock showed
+      description: The consent text, or "nothing, it let it through".
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should have shown
+      description: What the tool really does, in plain words.
+    validations:
+      required: true
