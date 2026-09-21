@@ -2,3 +2,8 @@
 
 :root { color-scheme: dark; }
 body { margin: 0; background: #0b0d10; }
+
+/* Anyone whose device is set to reduce motion gets no transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
