@@ -122,7 +122,7 @@ export default function App() {
           </div>
 
           {/* The consent card ---------------------------------------------- */}
-          <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
+          <section aria-labelledby="consent-title" className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
             <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
               <div className="flex items-start gap-3">
                 {verdict.accepted ? (
@@ -131,7 +131,7 @@ export default function App() {
                   <FileWarning className="mt-0.5 h-5 w-5 shrink-0 text-rose-400" />
                 )}
                 <div>
-                  <h3 className="text-[15px] font-semibold leading-snug text-zinc-100">{shown.title}</h3>
+                  <h3 id="consent-title" className="text-[15px] font-semibold leading-snug text-zinc-100">{shown.title}</h3>
                   <p className="mt-0.5 font-mono text-[11px] text-zinc-500">{facts.tool}</p>
                 </div>
               </div>
@@ -183,11 +183,11 @@ export default function App() {
             <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">
               Verifier
               {verdict.accepted ? (
-                <span className="inline-flex items-center gap-1 text-emerald-400 normal-case tracking-normal">
+                <span role="status" className="inline-flex items-center gap-1 text-emerald-400 normal-case tracking-normal">
                   <Check className="h-3.5 w-3.5" /> narration accepted
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-rose-400 normal-case tracking-normal">
+                <span role="status" className="inline-flex items-center gap-1 text-rose-400 normal-case tracking-normal">
                   <X className="h-3.5 w-3.5" /> narration withheld — showing derived facts only
                 </span>
               )}
