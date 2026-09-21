@@ -69,6 +69,7 @@ export default function App() {
 
           <button
             onClick={() => setNarratorCompromised((v) => !v)}
+            aria-pressed={narratorCompromised}
             className={`rounded-lg px-3.5 py-2 text-xs font-medium ring-1 transition ${
               narratorCompromised
                 ? 'bg-rose-500/15 text-rose-300 ring-rose-500/40'
@@ -82,7 +83,7 @@ export default function App() {
 
       <main className="mx-auto grid max-w-6xl gap-6 px-8 py-8 lg:grid-cols-[300px_1fr]">
         {/* Scenarios ------------------------------------------------------ */}
-        <nav className="space-y-1.5">
+        <nav className="space-y-1.5" aria-label="Pending calls">
           <h2 className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">
             Pending calls
           </h2>
@@ -93,6 +94,7 @@ export default function App() {
               <button
                 key={s.id}
                 onClick={() => setSelectedId(s.id)}
+                aria-current={active ? 'true' : undefined}
                 className={`w-full rounded-lg px-3 py-2.5 text-left ring-1 transition ${
                   active
                     ? 'bg-zinc-800/80 ring-zinc-700'
