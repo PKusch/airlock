@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 85 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes
+npm test          # 92 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -25,7 +25,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 85 tests run in CI on every push and pull request, across
+The type check and all 92 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -555,8 +555,37 @@ approving, and was previously unsayable.
   a stdio pipe, so anything at or above the threshold is returned to the client
   as an error carrying the consent card. A host with a real approval UI passes
   `approve`.
-- **Severity is calibrated for loudness, not for meaning.** The alarm rate is
-  measured. Whether `critical` matches what a person would call critical is not.
+- **Severity weighed the verb and ignored the scope, until 2026-09-23 — and
+  still only sees the scope it can name.** Every rule in `deriveSeverity` keyed
+  off which effect a tool had (`write`, `delete`, ...); none of them looked at
+  `affected`, the count of things a call names, which the narrator already had
+  to report and the verifier already refused to let it understate. Four
+  concrete cases, checked before fixing anything: the real memory-server tool
+  `delete_entities` scored `high` whether the call named one entity or five
+  hundred; a bulk `create_entities` call naming 3,000 new entities scored
+  `moderate` — below the alarm threshold — same as naming one; and two
+  synthetic bulk writes in the same shape as the corpus (`update_records`
+  across 5,000 ids, `apply_discount` across 50,000 order ids, neither verb
+  destructive-sounding) scored `moderate` too. A careful reviewer would not
+  wave through a 50,000-row discount the same way as a one-row one. Now a
+  bounded call (not a glob — those already reach `critical` via the existing
+  `isUnbounded` rule) whose explicit scope is `LARGE_SCOPE` (20) or more names
+  raises one level, on the same append-only ladder as every other signal here:
+  the four cases above move to `critical`, `high`, `high`, and `high`
+  respectively, and single-item calls of the same tools are untouched. The 30
+  benign calls, the 36-tool real-corpus audit, the held-out privilege and
+  annotation corpora, and the 6-scenario attack suite are all unchanged before
+  and after: 0% false alarms, 5/5 real-corpus recall, 16/22 held-out — see
+  `test/scope.test.ts`. What this does not fix: the escalation only sees scope
+  that already earned a `subject` or `path` role from the parameter-name
+  vocabulary in `adapt.ts` — a bulk array named `targets` or `accountList`
+  rather than `ids`/`names` is as invisible to it as `terminate_instance` was
+  to the effect-verb list, for the same reason. And `LARGE_SCOPE` is set
+  against corpora that never name more than three things explicitly in one
+  call; there is no corpus of real bulk API calls to measure the right number
+  against, so 20 is a defensible floor, not a measured one. Whether `critical`
+  matches what a person would call critical, beyond these four checked cases,
+  is still not measured.
 
 ## Scenarios
 
@@ -584,6 +613,7 @@ test/gate.test.ts        attack suite + calibration
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
 test/privilege.test.ts   privilege changes: a floor independent of the server's hints
+test/scope.test.ts       explicit scope large enough to escalate on its own, not just the verb
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
 ```

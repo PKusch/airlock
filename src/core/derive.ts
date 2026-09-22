@@ -215,6 +215,18 @@ function hostOf(url: string): string | null {
 
 const GLOB_CHARS = /[*?[\]{}]/;
 
+/**
+ * How many explicitly-named things (paths or subjects, the same count the
+ * card shows as `affected`) make a bounded call a batch rather than a
+ * handful. See the scope-escalation comment in `deriveSeverity` for why this
+ * exists and why 20: the real and benign corpora never name more than three
+ * things explicitly in one call, and the cases this closes name hundreds to
+ * tens of thousands — there is no legitimate small-batch call anywhere near
+ * this number to false-alarm on, and no principled way to pick a number
+ * closer to the actual bulk sizes without a corpus that has some.
+ */
+const LARGE_SCOPE = 20;
+
 export interface DeriveOptions {
   /** Supply one to catch confinement escapes that only exist on disk. */
   resolver?: PathResolver;
@@ -689,6 +701,35 @@ function deriveSeverity(
   if (effects.has('spend') || effects.has('credential_access')) raise('critical');
 
   if (isUnbounded && effects.has('execute')) raise('critical');
+
+  // Scope, counted the same way the card counts it, raises severity on its
+  // own. Every rule above keys off which verb was used; none of them looks at
+  // how many things the call actually names. A write that touches one record
+  // and a write that touches five thousand, listed explicitly rather than by
+  // a glob, were scored identically at `moderate` — the ladder had a notion
+  // of "how many" (`affected`, shown on the card) that severity never
+  // consulted. `LARGE_SCOPE` is set well above anything the real and benign
+  // corpora ever name explicitly in one call (three, at most — see
+  // `real-corpus.test.ts`) and far below the bulk sizes a bulk API call
+  // actually uses, so it separates "a handful, named by hand" from "a batch
+  // operation" without needing a glob to say so. This is the same shape as
+  // the `isUnbounded` escalation just above — an unbounded pattern is simply
+  // the case where even the deriver cannot put a number on "how many" — so it
+  // reuses the same rule: push a `moderate` write to `high`, and a `high`
+  // delete the rest of the way to `critical`, exactly where an unbounded one
+  // already lands.
+  const affectedN = countAffected(targets);
+  const scopedEffects = effects.has('write') || effects.has('delete') || effects.has('execute') ||
+    effects.has('network_egress') || effects.has('message_send');
+  const largeScope = !isUnbounded && scopedEffects && affectedN >= LARGE_SCOPE;
+  if (largeScope) {
+    signals.push({
+      code: 'large_bounded_scope',
+      detail: `names ${affectedN} things explicitly in one call, at or above the ${LARGE_SCOPE} the scope check treats as a batch rather than a handful`,
+      source: 'targets',
+    });
+    raise(rank >= SEVERITY.high ? 'critical' : 'high');
+  }
 
   // Escaping a boundary the tool declared for itself is the strongest signal
   // available: the tool stated a limit and the argument left it.
