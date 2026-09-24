@@ -32,6 +32,12 @@ export function startProxy(command: string, args: string[], options: ProxyOption
   // stderr is inherited so the wrapped server's own diagnostics still reach
   // the operator rather than being swallowed by the proxy.
   const server = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
+  // A command that does not exist is the commonest first mistake. Without this
+  // it surfaces as an unhandled 'error' event and a stack trace.
+  server.on('error', (e) => {
+    console.error(`airlock: could not start '${command}': ${e.message}`);
+    process.exit(127);
+  });
 
   /** Tool definitions learned from the server's own `tools/list` response. */
   const tools = new Map<string, McpToolDefinition>();
