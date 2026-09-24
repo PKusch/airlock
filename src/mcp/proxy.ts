@@ -127,7 +127,25 @@ export function startProxy(command: string, args: string[], options: ProxyOption
       return;
     }
 
-    const decision = await gate(def, { id: String(message.id ?? name), tool: name, args }, options);
+    // Judging a call must never let it through by failing. The gate's default
+    // is refusal; an internal error — a thrown narrator, a resolver that raised
+    // — is no exception. Without this, such a throw reached the queue's catch
+    // and the call was dropped: neither forwarded nor refused, the client left
+    // waiting forever with no card and no error. Fail closed, and say why.
+    let decision;
+    try {
+      decision = await gate(def, { id: String(message.id ?? name), tool: name, args }, options);
+    } catch (e) {
+      send(process.stdout, {
+        jsonrpc: '2.0',
+        id: message.id,
+        error: {
+          code: -32000,
+          message: `Airlock refused '${name}': the call could not be judged (${(e as Error).message}).`,
+        },
+      });
+      return;
+    }
 
     if (!decision.requiresApproval) {
       send(server.stdin, message);
@@ -135,7 +153,14 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     }
 
     const card = formatConsent(decision);
-    const approved = options.approve ? await options.approve(card) : false;
+    // A host approval callback that throws is treated as no approval, not as a
+    // reason to drop the call.
+    let approved = false;
+    try {
+      approved = options.approve ? await options.approve(card) : false;
+    } catch {
+      approved = false;
+    }
 
     if (approved) {
       send(server.stdin, message);

@@ -123,6 +123,20 @@ test('the proxy forwards ordinary calls and withholds dangerous ones', async () 
   assert.match(unknown.error.message, /no tool definition/);
 });
 
+test('a malformed tool definition does not silently drop the call it names', async () => {
+  // The server declared broken_tool with no schema. Before the adapter was
+  // hardened and the proxy made to fail closed, gating this call threw and the
+  // client got no response at all — the call neither made nor refused. Now the
+  // client always gets an answer.
+  const responses = await driveProxy([
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'broken_tool', arguments: { x: 1 } } },
+  ]);
+  const reply = responses.find((r) => r.id === 2);
+  assert.ok(reply, 'the client received a response for the call, not silence');
+  assert.ok('result' in reply || 'error' in reply, 'the call was answered — made or refused, never dropped');
+});
+
 
 test("the server's own hints reach the gate through tools/list", async () => {
   // scrub_records names no action the vocabulary knows. Without its

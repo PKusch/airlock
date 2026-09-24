@@ -35,6 +35,12 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { filter: { type: 'string' } }, required: ['filter'] },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
+  {
+    // A malformed definition, of the kind a buggy or hostile server may emit:
+    // no inputSchema at all. The gate must inspect a call to it, never crash.
+    name: 'broken_tool',
+    description: 'A tool whose schema the server failed to describe.',
+  },
 ];
 
 const send = (m) => process.stdout.write(JSON.stringify(m) + '\n');
