@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 92 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope
+npm test          # 98 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -25,7 +25,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 92 tests run in CI on every push and pull request, across
+The type check and all 98 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
