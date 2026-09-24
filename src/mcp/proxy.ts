@@ -74,7 +74,14 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     if (message.id !== undefined && listRequests.has(message.id)) {
       listRequests.delete(message.id);
       const result = message.result as { tools?: McpToolDefinition[] } | undefined;
-      for (const def of result?.tools ?? []) tools.set(def.name, def);
+      // The list is the server's output, and a malformed entry — a null, or one
+      // with no name — must not throw here: this handler also forwards the reply
+      // below, so a throw would drop the whole tools/list and leave the client
+      // (and any call waiting on it) hanging. A nameless definition is nothing we
+      // can gate a call against, so it is skipped, not learned.
+      for (const def of result?.tools ?? []) {
+        if (def && typeof def === 'object' && typeof def.name === 'string') tools.set(def.name, def);
+      }
       if (listRequests.size === 0) releaseListWaiters();
     }
 

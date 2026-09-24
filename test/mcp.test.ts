@@ -66,11 +66,11 @@ test('gating a real-shaped MCP call surfaces the escape', async () => {
 // End to end, through an actual child process over actual stdio.
 // ---------------------------------------------------------------------------
 
-function driveProxy(requests: object[]): Promise<any[]> {
+function driveProxy(requests: object[], server = join(here, 'fake-mcp-server.mjs')): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const proxy = spawn(
       process.execPath,
-      ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), '--', process.execPath, join(here, 'fake-mcp-server.mjs')],
+      ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), '--', process.execPath, server],
       { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, AIRLOCK_CONFINE: '*.path=/HOME/projects' } },
     );
 
@@ -121,6 +121,21 @@ test('the proxy forwards ordinary calls and withholds dangerous ones', async () 
   const unknown = byId.get(4);
   assert.ok(unknown.error, 'a tool we never saw declared is refused');
   assert.match(unknown.error.message, /no tool definition/);
+});
+
+test('a malformed tools/list is learned past, not crashed on', async () => {
+  // The server's list carries a good tool, a null, and a nameless entry. The
+  // learning loop also forwards the reply, so a throw there would drop the whole
+  // list and hang the client. The good tool must still be gated normally.
+  const responses = await driveProxy([
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_text_file', arguments: { path: '/HOME/projects/README.md' } } },
+  ], join(here, 'malformed-mcp-server.mjs'));
+  const byId = new Map(responses.map((r) => [r.id, r]));
+  assert.ok(byId.get(1)?.result?.tools, 'the tools/list reply was forwarded, not dropped');
+  const call = byId.get(2);
+  assert.ok(call, 'the call to the well-formed tool was answered');
+  assert.match(call.result.content[0].text, /EXECUTED read_text_file/, 'and the good tool was learned and gated');
 });
 
 test('a malformed tool definition does not silently drop the call it names', async () => {
