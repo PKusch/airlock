@@ -182,7 +182,16 @@ export interface AdaptOptions {
 export function adaptMcpTool(def: McpToolDefinition, options: AdaptOptions = {}): ToolSchema {
   const parameters: Record<string, ParamSpec> = {};
 
-  for (const [name, prop] of Object.entries(def.inputSchema.properties ?? {})) {
+  // A tool definition is the server's own output, and the server is exactly the
+  // party this gate does not trust. A hostile or buggy one can send a missing
+  // inputSchema or a null property node; neither may be allowed to throw, or the
+  // call it describes would slip past the gate uninspected. An unreadable node
+  // carries nothing to derive from, so it is adapted as an opaque parameter —
+  // still visible to adaptationGaps — rather than dropped or crashed on.
+  const schema = def.inputSchema as McpToolDefinition['inputSchema'] | null | undefined;
+  const properties = (schema && typeof schema === 'object' ? schema.properties : undefined) ?? {};
+  for (const [name, entry] of Object.entries(properties)) {
+    const prop = entry && typeof entry === 'object' ? entry : ({} as JsonSchemaProperty);
     parameters[name] = adaptParameter(def.name, name, prop, inferRole(name, prop), options);
   }
 

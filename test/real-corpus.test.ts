@@ -160,3 +160,27 @@ test('every inferred effect can name the text that produced it', () => {
     }
   }
 });
+
+/**
+ * A tool definition is the server's output, and the server is the party the
+ * gate does not trust. A malformed one must never throw its way past the gate:
+ * an uninspected call is the one outcome the whole design exists to prevent.
+ */
+test('a malformed tool definition is adapted, not thrown on', () => {
+  const call: ToolCall = { id: '1', tool: 'x', args: { a: 1 } };
+  const hostile: McpToolDefinition[] = [
+    { name: 'x', description: 'd', inputSchema: null as never },
+    { name: 'x', description: 'd', inputSchema: { type: 'object', properties: undefined } },
+    { name: 'x', description: 'd', inputSchema: { type: 'object', properties: { a: null as never } } },
+    { name: 'x' } as McpToolDefinition,
+  ];
+  for (const def of hostile) {
+    const schema = adaptMcpTool(def);
+    const facts = deriveFacts(schema, call);
+    assert.ok(facts.severity in SEVERITY, `severity derived for ${JSON.stringify(def.inputSchema)}`);
+  }
+  // A null property node is opaque, not silently dropped: the parameter is
+  // still present so adaptationGaps can report it as unchecked.
+  const withNullProp = adaptMcpTool({ name: 'x', inputSchema: { type: 'object', properties: { a: null as never } } });
+  assert.ok('a' in withNullProp.parameters, 'the unreadable parameter is kept as opaque');
+});
