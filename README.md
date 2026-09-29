@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 98 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line
+npm test          # 105 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -25,7 +25,7 @@ AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 98 tests run in CI on every push and pull request, across
+The type check and all 105 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -576,16 +576,46 @@ approving, and was previously unsayable.
   benign calls, the 36-tool real-corpus audit, the held-out privilege and
   annotation corpora, and the 6-scenario attack suite are all unchanged before
   and after: 0% false alarms, 5/5 real-corpus recall, 16/22 held-out — see
-  `test/scope.test.ts`. What this does not fix: the escalation only sees scope
-  that already earned a `subject` or `path` role from the parameter-name
-  vocabulary in `adapt.ts` — a bulk array named `targets` or `accountList`
-  rather than `ids`/`names` is as invisible to it as `terminate_instance` was
-  to the effect-verb list, for the same reason. And `LARGE_SCOPE` is set
-  against corpora that never name more than three things explicitly in one
-  call; there is no corpus of real bulk API calls to measure the right number
-  against, so 20 is a defensible floor, not a measured one. Whether `critical`
-  matches what a person would call critical, beyond these four checked cases,
-  is still not measured.
+  `test/scope.test.ts`. When this shipped, the escalation only saw scope that
+  already earned a `subject` or `path` role from a fixed list of field-name
+  synonyms in `adapt.ts` (`ids`, `names`, `identifiers`) — a bulk array named
+  `targets` or `accountList` was as invisible to it as `terminate_instance`
+  was to the effect-verb list, for the same reason: a finite list of words
+  runs out. Closed since: a *top-level* array parameter whose elements are a
+  plain string or number, and not drawn from a fixed set of choices, now earns
+  `subject` from its shape alone — `adapt.ts`'s `isBulkScopeRole` — whatever
+  its name, so `targets`, `accountList` and any name the vocabulary has never
+  seen are counted the same as `ids`/`names` now are. It adds nothing beyond
+  the count: `subject` carries no effect of its own (`ROLE_EFFECTS` in
+  `derive.ts`), so this cannot turn a read into a write or invent egress, only
+  make the existing `affected` count and `large_bounded_scope` check see an
+  array they previously skipped entirely; an unrecognised tool with a bulk
+  array of strings still floors at `moderate`, not higher (`test/scope.test.ts`).
+  An array of booleans, or one drawn from a fixed `enum` of choices, is
+  unaffected and stays `inert` — a list of on/off flags is not a batch of
+  identifiers, whatever it's called. Checked against all three corpora after
+  the change: the 36-tool real-corpus audit is byte-for-byte identical (0%
+  false alarms, 5/5 recall — none of its arrays needed the fallback, they
+  already had roles), the 30 benign calls are unchanged (0% false alarms, 5/5
+  adversarial recall), and the held-out privilege/annotation corpus is
+  unchanged at 16/22 (it has no array parameters at all). What is still not
+  fixed, honestly: the fallback only reads a *top-level* parameter's own
+  shape. A bulk array **nested** inside an element of a structured payload —
+  `add_observations.observations[].contents`, a real field in the corpus — is
+  left exactly as opaque as before, on purpose: there the same shape (many
+  short strings) is just as often free text as a list of identifiers, and
+  nothing in the schema distinguishes them once the field is one property
+  among several on a declared object (see `test/scope.test.ts`,
+  "the fallback is top-level only"). Also still unreached: an opaque array of
+  *objects* at the top level (no declared `items.properties`, so there is
+  nothing to walk), a single field encoding many targets some other way — a
+  comma-separated string, an object keyed by id — and, as before, a glob or
+  free-text description of scope rather than an enumerated one. And
+  `LARGE_SCOPE` is still set against corpora that never name more than three
+  things explicitly in one call; there is no corpus of real bulk API calls to
+  measure the right number against, so 20 remains a defensible floor, not a
+  measured one. Whether `critical` matches what a person would call critical,
+  beyond the four originally-checked cases, is still not measured.
 
 ## Scenarios
 

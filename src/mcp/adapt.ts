@@ -148,8 +148,59 @@ function elementProperties(prop: JsonSchemaProperty): Record<string, JsonSchemaP
 }
 
 /** A value that cannot carry a target, whatever it says. */
-function isInert(prop: { type?: string; enum?: unknown[] }): boolean {
-  return prop.type === 'number' || prop.type === 'integer' || prop.type === 'boolean' || Array.isArray(prop.enum);
+function isInert(prop: { type?: string; enum?: unknown[]; items?: unknown }): boolean {
+  if (prop.type === 'number' || prop.type === 'integer' || prop.type === 'boolean' || Array.isArray(prop.enum)) {
+    return true;
+  }
+  // An array is inert the same way its elements are: a list of booleans or a
+  // list drawn from a fixed set of choices is not a batch of identifiers,
+  // whatever it is called. `isBulkScopeRole` below only ever fires on the
+  // complementary case (plain string/number elements), so this keeps the two
+  // rules from disagreeing about the same array.
+  if (prop.type === 'array' && prop.items && typeof prop.items === 'object') {
+    const items = prop.items as { type?: string; enum?: unknown[] };
+    if (items.type === 'boolean' || Array.isArray(items.enum)) return true;
+  }
+  return false;
+}
+
+/**
+ * A bulk array of plain scalars, named something the role vocabulary has
+ * never seen, still counts toward scope.
+ *
+ * `ROLE_TOKENS` gives `subject` to a field named `ids` or `names`; that is a
+ * fixed list of synonyms, and 2026-09-23's scope escalation (see derive.ts,
+ * `LARGE_SCOPE`) only ever sees a call through a role. A bulk array named
+ * `targets`, `keys` or `accountList` matches none of those synonyms and was
+ * invisible to the scope check no matter how many entries it named — the same
+ * blind spot as `terminate_instance` was to the effect-verb list, and for the
+ * same reason: a finite vocabulary of words runs out.
+ *
+ * The fallback here does not add another word. It reads the shape the schema
+ * already declares: a top-level array whose elements are a plain string or
+ * number, with no fixed set of choices, is nothing but a flat list of
+ * individually-addressable entries — which is what `subject` already means
+ * for `entityNames` or `recordIds`. It earns nothing beyond that: `subject`
+ * is not wired to any effect in `ROLE_EFFECTS` (derive.ts), so this cannot by
+ * itself turn a read into a write or invent egress; it only makes the count
+ * `affected` already computes see this array too, the same count the
+ * `large_bounded_scope` escalation and the consent card both use.
+ *
+ * Deliberately restricted to top-level parameters — `inferNestedRole` does
+ * not call this. A bulk array *inside* an element is exactly as likely to be
+ * free text as a list of identifiers (`add_observations.observations[].contents`
+ * is a real example, held opaque on purpose in payloads.test.ts), and there is
+ * no shape left to tell the two apart once the field is one property among
+ * several on a declared object. At the top level a JSON Schema array is the
+ * whole argument, so "many short scalar entries" is the only kind of thing an
+ * MCP client sends this way.
+ */
+function isBulkScopeRole(prop: JsonSchemaProperty): ParamSpec['role'] {
+  if (prop.type !== 'array' || !prop.items || typeof prop.items !== 'object') return undefined;
+  const items = prop.items as JsonSchemaProperty;
+  if (Array.isArray(items.enum)) return undefined;
+  if (items.type === 'string' || items.type === 'number' || items.type === 'integer') return 'subject';
+  return undefined;
 }
 
 function mapType(t: string | undefined): ParamSpec['type'] {
@@ -192,7 +243,8 @@ export function adaptMcpTool(def: McpToolDefinition, options: AdaptOptions = {})
   const properties = (schema && typeof schema === 'object' ? schema.properties : undefined) ?? {};
   for (const [name, entry] of Object.entries(properties)) {
     const prop = entry && typeof entry === 'object' ? entry : ({} as JsonSchemaProperty);
-    parameters[name] = adaptParameter(def.name, name, prop, inferRole(name, prop), options);
+    const role = inferRole(name, prop) ?? isBulkScopeRole(prop);
+    parameters[name] = adaptParameter(def.name, name, prop, role, options);
   }
 
   const selfDescription = selfDescriptionOf(def.annotations);

@@ -155,3 +155,92 @@ test('the threshold is a boundary, not a vibe: nineteen does not fire, twenty do
   assert.equal(below.severity, 'moderate');
   assert.equal(at.severity, 'high');
 });
+
+// --- Case 5: a bulk array named outside the role vocabulary --------------------
+// The gap this closes: `LARGE_SCOPE` only ever sees a call through a `subject`
+// or `path` role (see derive.ts), and until now a role only ever came from a
+// field-name synonym list in adapt.ts (`ids`, `names`, `identifiers`, ...). A
+// bulk array named anything else — `targets` below, but `keys`, `accountList`
+// and countless real field names are the same case — matched no synonym and
+// was invisible to the scope check no matter how many entries it named. Before
+// this fix, `many.severity` here was `moderate`, identical to `one.severity`,
+// and `many.affected` was `{ kind: 'exact', n: 0 }` — the array was not read
+// at all, not even undercounted.
+
+const updateTargets: McpToolDefinition = {
+  name: 'update_targets',
+  description: 'Updates the status field on the given targets.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      targets: { type: 'array', items: { type: 'string' } },
+      status: { type: 'string' },
+    },
+  },
+};
+
+test('update_targets: a bulk array named outside the role vocabulary still earns scope', () => {
+  assert.equal(adaptMcpTool(updateTargets).parameters.targets.role, 'subject');
+
+  const one = derive(updateTargets, { targets: names(1, 't'), status: 'closed' });
+  const many = derive(updateTargets, { targets: names(500, 't'), status: 'closed' });
+  assert.equal(one.severity, 'moderate');
+  assert.deepEqual(many.affected, { kind: 'exact', n: 500 });
+  assert.equal(many.severity, 'high');
+  assert.ok(many.signals.some((s) => s.code === 'large_bounded_scope'));
+});
+
+test('the fallback role adds no effect of its own: an unrecognised tool with a bulk array of strings stays unrecognised', () => {
+  const noop: McpToolDefinition = {
+    name: 'frobnicate_widgets',
+    description: 'Frobnicates the given widgets.',
+    inputSchema: { type: 'object', properties: { widgetIds: { type: 'array', items: { type: 'string' } } } },
+  };
+  const facts = derive(noop, { widgetIds: names(500, 'w') });
+  assert.equal(adaptMcpTool(noop).parameters.widgetIds.role, 'subject');
+  assert.equal(facts.recognition.status, 'unrecognised');
+  assert.equal(facts.severity, 'moderate', 'an unrecognised verb floors at moderate, whatever the scope');
+  assert.ok(!facts.signals.some((s) => s.code === 'large_bounded_scope'), 'scope only escalates a recognised, scoped effect');
+});
+
+test('a bulk array of booleans, or of a fixed set of choices, is still inert — not a batch of identifiers', () => {
+  const flags: McpToolDefinition = {
+    name: 'update_flags',
+    description: 'Updates the given flags.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flags: { type: 'array', items: { type: 'boolean' } },
+        modes: { type: 'array', items: { type: 'string', enum: ['on', 'off'] } },
+      },
+    },
+  };
+  const schema = adaptMcpTool(flags);
+  assert.equal(schema.parameters.flags.role, undefined);
+  assert.equal(schema.parameters.flags.inert, true);
+  assert.equal(schema.parameters.modes.role, undefined);
+  assert.equal(schema.parameters.modes.inert, true);
+
+  const facts = derive(flags, { flags: Array(500).fill(true), modes: Array(500).fill('on') });
+  assert.equal(facts.severity, 'moderate');
+  assert.ok(!facts.signals.some((s) => s.code === 'large_bounded_scope'));
+});
+
+test('the fallback is top-level only: a bulk array of strings inside an element stays opaque, same as free text', () => {
+  const batch: McpToolDefinition = {
+    name: 'create_widgets',
+    description: 'Creates the given widgets.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        widgets: {
+          type: 'array',
+          items: { type: 'object', properties: { label: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } } },
+        },
+      },
+    },
+  };
+  const schema = adaptMcpTool(batch);
+  assert.equal(schema.parameters.widgets.nested?.tags.role, undefined, 'a field inside an element is not the top-level fallback');
+  assert.equal(schema.parameters.widgets.nested?.tags.inert, undefined, 'still not inert either — it is scanned as opaque text');
+});
