@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
 import { parseManifest, manifestSha, EFFECT_KINDS } from '../src/mcp/manifest.ts';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('a well-formed manifest yields confinement and declared effects', () => {
   const r = parseManifest(JSON.stringify({
@@ -66,3 +72,10 @@ test('the sha is over the exact bytes', () => {
   assert.notEqual(manifestSha(text), manifestSha(text + '\n'));
   assert.match(manifestSha(text), /^[0-9a-f]{64}$/);
 });
+
+test('the committed example manifest is valid', () => {
+  const r = parseManifest(readFileSync(join(root, 'examples/manifest.json'), 'utf8'));
+  assert.ok(r.ok, r.ok ? '' : r.error);
+  assert.deepEqual(r.manifest.declaredEffects.terminate_instance, ['delete']);
+});
+

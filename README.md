@@ -24,10 +24,10 @@ npm run dev       # the UI, port 3200
 AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 
-# wrap it behind a reviewed manifest: what you have read the tools to really do,
-# pinned to its own hash so a swapped file is refused rather than trusted
+# wrap it behind a reviewed manifest (see examples/manifest.json): what you have
+# read the tools to really do, pinned to its hash so a swap is refused not trusted
 node --experimental-strip-types src/mcp/cli.ts \
-  --manifest manifest.json --manifest-sha "$(shasum -a 256 manifest.json | cut -d' ' -f1)" \
+  --manifest examples/manifest.json --manifest-sha "$(shasum -a 256 examples/manifest.json | cut -d' ' -f1)" \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 

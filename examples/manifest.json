@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "confine": {
+    "*.path": "/Users/me/projects",
+    "*.url": "https://api.internal.example"
+  },
+  "effects": {
+    "terminate_instance": ["delete"],
+    "rotate_credentials": ["credential_access", "write"],
+    "charge_card": ["spend"],
+    "get_status": []
+  }
+}
