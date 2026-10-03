@@ -2,10 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { adaptMcpTool, adaptationGaps, type McpToolDefinition } from '../src/mcp/adapt.ts';
+import { manifestSha } from '../src/mcp/manifest.ts';
 import { gate } from '../src/mcp/gate.ts';
 import { deriveFacts } from '../src/core/derive.ts';
 import { SEVERITY } from '../src/core/types.ts';
@@ -66,11 +68,11 @@ test('gating a real-shaped MCP call surfaces the escape', async () => {
 // End to end, through an actual child process over actual stdio.
 // ---------------------------------------------------------------------------
 
-function driveProxy(requests: object[], server = join(here, 'fake-mcp-server.mjs')): Promise<any[]> {
+function driveProxy(requests: object[], server = join(here, 'fake-mcp-server.mjs'), cliArgs: string[] = []): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const proxy = spawn(
       process.execPath,
-      ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), '--', process.execPath, server],
+      ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), ...cliArgs, '--', process.execPath, server],
       { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, AIRLOCK_CONFINE: '*.path=/HOME/projects' } },
     );
 
@@ -222,3 +224,30 @@ test('asserted boundaries bring the MCP alarm rate to zero on ordinary calls', (
   assert.ok(fired(undefined) > 0, 'unasserted, the gate interrupts ordinary work');
   assert.equal(fired(confinement), 0, 'asserted, it does not');
 });
+
+test('a manifest catches a destructive tool the lexical deriver cannot read', async () => {
+  const server = join(here, 'unreadable-tool-server.mjs');
+  const call = { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'terminate_instance', arguments: { instance_id: 'i-123' } } };
+  const list = { jsonrpc: '2.0', id: 1, method: 'tools/list' };
+
+  // Without a manifest, nothing in the definition says it deletes, so it is forwarded.
+  const before = await driveProxy([list, call], server);
+  const b = new Map(before.map((r) => [r.id, r]));
+  assert.equal(b.get(2).error, undefined, 'unread by the deriver, so not interrupted');
+  assert.match(b.get(2).result.content[0].text, /EXECUTED terminate_instance/);
+
+  // With a reviewed manifest declaring the delete, the same call is withheld.
+  const text = JSON.stringify({ version: 1, effects: { terminate_instance: ['delete'] } });
+  const m = join(here, '.tmp-e2e-manifest.json');
+  writeFileSync(m, text);
+  try {
+    const after = await driveProxy([list, call], server, ['--manifest', m, '--manifest-sha', manifestSha(text)]);
+    const a = new Map(after.map((r) => [r.id, r]));
+    assert.ok(a.get(2).error, 'the manifest made the delete visible, so the call is withheld');
+    assert.ok(SEVERITY[a.get(2).error.data.severity as keyof typeof SEVERITY] >= SEVERITY.high, 'a declared delete reaches at least high');
+    assert.ok(!('result' in a.get(2)), 'and it never reached the server');
+  } finally {
+    rmSync(m, { force: true });
+  }
+});
+
