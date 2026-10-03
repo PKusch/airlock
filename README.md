@@ -649,6 +649,8 @@ src/mcp/adapt.ts         MCP definitions → something derivable, and what was l
 src/mcp/manifest.ts      a reviewed capability manifest: effects and boundaries, hash-verified
 src/mcp/gate.ts          the guard: derive → narrate → verify → render
 src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
+src/mcp/cli.ts           the entry point; loads and verifies a manifest, then starts the proxy
+src/mcp/args.ts          the command line and AIRLOCK_CONFINE, read as data
 src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
 corpus/                  36 real MCP definitions with ground truth; two corpora (22 + 28 tools) of verbs the vocabulary did not know
 test/gate.test.ts        attack suite + calibration
