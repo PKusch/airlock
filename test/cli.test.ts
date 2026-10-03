@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,4 +57,55 @@ test('a bad AIRLOCK_CONFINE stops the proxy before it starts, with exit 2', () =
   const r = cli(['--', process.execPath, '-e', '0'], { AIRLOCK_CONFINE: '*.path' });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /AIRLOCK_CONFINE: '\*\.path' should look like parameter=value/);
+});
+
+test('the manifest flags: parsed before "--", and not stolen from the command after it', () => {
+  assert.deepEqual(parseCli(['--manifest', 'm.json', '--', 'srv'], {}), {
+    kind: 'run', command: 'srv', args: [], confinement: {}, manifestPath: 'm.json',
+  });
+  assert.deepEqual(parseCli(['--manifest', 'm.json', '--manifest-sha', 'abc123', '--', 'srv'], {}), {
+    kind: 'run', command: 'srv', args: [], confinement: {}, manifestPath: 'm.json', manifestSha: 'abc123',
+  });
+  // a --manifest meant for the wrapped server (after --) is left alone
+  const r = parseCli(['--', 'srv', '--manifest', 'x'], {});
+  assert.equal(r.kind, 'run');
+  assert.deepEqual((r as { args: string[] }).args, ['--manifest', 'x']);
+  assert.ok(!('manifestPath' in r));
+});
+
+test('a manifest flag with no value, or a sha with no manifest, is refused', () => {
+  assert.equal(parseCli(['--manifest', '--', 'srv'], {}).kind, 'error');
+  assert.equal(parseCli(['--manifest-sha', 'abc', '--', 'srv'], {}).kind, 'error');
+});
+
+test('a manifest whose sha does not match the pin stops the proxy, exit 2', () => {
+  const dir = join(root, 'test');
+  const m = join(dir, '.tmp-manifest.json');
+  writeFileSync(m, JSON.stringify({ version: 1, effects: { terminate_instance: ['delete'] } }));
+  try {
+    const r = cli(['--manifest', m, '--manifest-sha', '0'.repeat(64), '--', process.execPath, '-e', '0']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /does not match --manifest-sha/);
+  } finally {
+    rmSync(m, { force: true });
+  }
+});
+
+test('a malformed manifest stops the proxy, exit 2', () => {
+  const dir = join(root, 'test');
+  const m = join(dir, '.tmp-bad-manifest.json');
+  writeFileSync(m, JSON.stringify({ version: 1, effects: { t: ['destroy'] } }));
+  try {
+    const r = cli(['--manifest', m, '--', process.execPath, '-e', '0']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /unknown effect "destroy"/);
+  } finally {
+    rmSync(m, { force: true });
+  }
+});
+
+test('a missing manifest file stops the proxy, exit 2', () => {
+  const r = cli(['--manifest', join(root, 'test', 'does-not-exist.json'), '--', process.execPath, '-e', '0']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /cannot read manifest/);
 });
