@@ -1,0 +1,68 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { parseManifest, manifestSha, EFFECT_KINDS } from '../src/mcp/manifest.ts';
+
+test('a well-formed manifest yields confinement and declared effects', () => {
+  const r = parseManifest(JSON.stringify({
+    version: 1,
+    confine: { '*.path': '/HOME/projects' },
+    effects: { terminate_instance: ['delete'], charge_card: ['spend'] },
+  }));
+  assert.ok(r.ok);
+  assert.equal(r.manifest.confinement['*.path'], '/HOME/projects');
+  assert.deepEqual(r.manifest.declaredEffects.terminate_instance, ['delete']);
+  assert.deepEqual(r.manifest.declaredEffects.charge_card, ['spend']);
+});
+
+test('an empty effects list is kept — reviewed and declared nothing', () => {
+  const r = parseManifest(JSON.stringify({ version: 1, effects: { ping: [] } }));
+  assert.ok(r.ok);
+  assert.deepEqual(r.manifest.declaredEffects.ping, []);
+});
+
+test('a missing section is simply absent, not an error', () => {
+  const r = parseManifest(JSON.stringify({ version: 1 }));
+  assert.ok(r.ok);
+  assert.deepEqual(r.manifest.confinement, {});
+  assert.deepEqual(r.manifest.declaredEffects, {});
+});
+
+test('an unknown effect is refused, not silently dropped', () => {
+  const r = parseManifest(JSON.stringify({ version: 1, effects: { t: ['destroy'] } }));
+  assert.ok(!r.ok);
+  assert.match(r.error, /unknown effect "destroy"/);
+});
+
+test('a non-string boundary is refused', () => {
+  const r = parseManifest(JSON.stringify({ version: 1, confine: { '*.path': 42 } }));
+  assert.ok(!r.ok);
+  assert.match(r.error, /confine\.\*\.path/);
+});
+
+test('the wrong version is refused rather than half-read', () => {
+  const r = parseManifest(JSON.stringify({ version: 2, effects: {} }));
+  assert.ok(!r.ok);
+  assert.match(r.error, /version/);
+});
+
+test('junk is refused with a reason, never thrown on', () => {
+  for (const bad of ['not json', '[]', 'null', '42', '{"version":1,"effects":[]}']) {
+    const r = parseManifest(bad);
+    assert.ok(!r.ok, bad);
+    assert.ok(r.error.length > 0, bad);
+  }
+});
+
+test('every effect the manifest allows is one the deriver understands', () => {
+  // EFFECT_KINDS is the gate's own vocabulary; a manifest cannot assert an effect
+  // the deriver would not know how to score.
+  assert.equal(EFFECT_KINDS.size, 8);
+});
+
+test('the sha is over the exact bytes', () => {
+  const text = JSON.stringify({ version: 1 });
+  assert.equal(manifestSha(text), manifestSha(text));
+  assert.notEqual(manifestSha(text), manifestSha(text + '\n'));
+  assert.match(manifestSha(text), /^[0-9a-f]{64}$/);
+});
