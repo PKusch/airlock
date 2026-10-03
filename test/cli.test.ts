@@ -109,3 +109,14 @@ test('a missing manifest file stops the proxy, exit 2', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /cannot read manifest/);
 });
+
+test('a boundary the manifest and AIRLOCK_CONFINE disagree on is said out loud', () => {
+  const m = join(root, 'test', '.tmp-conflict-manifest.json');
+  writeFileSync(m, JSON.stringify({ version: 1, confine: { '*.path': '/from/manifest' } }));
+  try {
+    const r = cli(['--manifest', m, '--', process.execPath, '-e', '0'], { AIRLOCK_CONFINE: '*.path=/from/env' });
+    assert.match(r.stderr, /AIRLOCK_CONFINE sets \*\.path=\/from\/env, the manifest says \/from\/manifest; using the manifest/);
+  } finally {
+    rmSync(m, { force: true });
+  }
+});

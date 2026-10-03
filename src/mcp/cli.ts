@@ -56,7 +56,14 @@ function loadManifest(path: string, expectedSha?: string): Manifest {
 const manifest = parsed.manifestPath ? loadManifest(parsed.manifestPath, parsed.manifestSha) : undefined;
 
 // The reviewed manifest wins on a shared boundary key: AIRLOCK_CONFINE is an
-// ad-hoc override, the manifest is the thing someone read and pinned.
+// ad-hoc override, the manifest is the thing someone read and pinned. A silent
+// swap of a boundary is the exact thing this tool refuses to do elsewhere, so a
+// real conflict is said out loud before the manifest's value takes effect.
+for (const [key, value] of Object.entries(manifest?.confinement ?? {})) {
+  if (key in parsed.confinement && parsed.confinement[key] !== value) {
+    console.error(`airlock: AIRLOCK_CONFINE sets ${key}=${parsed.confinement[key]}, the manifest says ${value}; using the manifest.`);
+  }
+}
 const confinement = { ...parsed.confinement, ...(manifest?.confinement ?? {}) };
 
 startProxy(parsed.command, parsed.args, {
