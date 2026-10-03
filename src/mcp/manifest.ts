@@ -69,6 +69,13 @@ export function parseManifest(text: string): ParseResult {
       if (typeof value !== 'string' || !value.trim()) {
         return { ok: false, error: `"confine.${key}" must be a non-empty string` };
       }
+      // A key the deriver can never match is a boundary the operator thinks is in
+      // force but is not. Confinement is looked up as `tool.param` or `*.param`,
+      // so a key with no dot (`"path"` for `"*.path"`) would silently apply to
+      // nothing. Refuse it rather than let it look set.
+      if (!key.includes('.')) {
+        return { ok: false, error: `"confine.${key}" should be tool.param or *.param (it has no dot, so it matches nothing)` };
+      }
       confinement[key] = value;
     }
   }

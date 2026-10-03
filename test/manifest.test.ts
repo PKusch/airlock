@@ -40,6 +40,12 @@ test('an unknown effect is refused, not silently dropped', () => {
   assert.match(r.error, /unknown effect "destroy"/);
 });
 
+test('a confine key that matches nothing is refused, not left looking set', () => {
+  const r = parseManifest(JSON.stringify({ version: 1, confine: { path: '/x' } }));
+  assert.ok(!r.ok);
+  assert.match(r.error, /matches nothing/);
+});
+
 test('a non-string boundary is refused', () => {
   const r = parseManifest(JSON.stringify({ version: 1, confine: { '*.path': 42 } }));
   assert.ok(!r.ok);
