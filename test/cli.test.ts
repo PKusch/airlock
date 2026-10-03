@@ -6,6 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseCli, parseConfinement } from '../src/mcp/args.ts';
+import { manifestSha } from '../src/mcp/manifest.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cli = (args: string[], env: Record<string, string> = {}) =>
@@ -116,6 +117,18 @@ test('a boundary the manifest and AIRLOCK_CONFINE disagree on is said out loud',
   try {
     const r = cli(['--manifest', m, '--', process.execPath, '-e', '0'], { AIRLOCK_CONFINE: '*.path=/from/env' });
     assert.match(r.stderr, /AIRLOCK_CONFINE sets \*\.path=\/from\/env, the manifest says \/from\/manifest; using the manifest/);
+  } finally {
+    rmSync(m, { force: true });
+  }
+});
+
+test('a verified manifest is confirmed on stderr, with counts', () => {
+  const m = join(root, 'test', '.tmp-verified-manifest.json');
+  const text = JSON.stringify({ version: 1, confine: { '*.path': '/p' }, effects: { a: ['delete'], b: ['spend'] } });
+  writeFileSync(m, text);
+  try {
+    const r = cli(['--manifest', m, '--manifest-sha', manifestSha(text), '--', process.execPath, '-e', '0']);
+    assert.match(r.stderr, /verified — 2 tool\(s\), 1 boundary\(ies\)/);
   } finally {
     rmSync(m, { force: true });
   }

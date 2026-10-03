@@ -50,6 +50,11 @@ function loadManifest(path: string, expectedSha?: string): Manifest {
     console.error(`airlock: manifest '${path}': ${result.error}`);
     process.exit(2);
   }
+  if (expectedSha !== undefined) {
+    const tools = Object.keys(result.manifest.declaredEffects).length;
+    const bounds = Object.keys(result.manifest.confinement).length;
+    console.error(`airlock: manifest '${path}' verified — ${tools} tool(s), ${bounds} boundary(ies)`);
+  }
   return result.manifest;
 }
 
