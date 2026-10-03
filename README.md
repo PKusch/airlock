@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 105 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line
+npm test          # 120 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -23,9 +23,15 @@ npm run dev       # the UI, port 3200
 # wrap a real MCP server
 AIRLOCK_CONFINE='*.path=/Users/me/projects' \
   node --experimental-strip-types src/mcp/cli.ts -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
+
+# wrap it behind a reviewed manifest: what you have read the tools to really do,
+# pinned to its own hash so a swapped file is refused rather than trusted
+node --experimental-strip-types src/mcp/cli.ts \
+  --manifest manifest.json --manifest-sha "$(shasum -a 256 manifest.json | cut -d' ' -f1)" \
+  -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 105 tests run in CI on every push and pull request, across
+The type check and all 120 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -216,7 +222,8 @@ through. The vocabulary cannot tell `retire_entities` from `translate_text`,
 and the honest move is to say so on the card rather than guess in either
 direction. An operator who would rather stop can set the gate's `threshold` to
 `moderate`, at the cost of stopping on those three. The actual fix is a
-declaration channel. The protocol has a partial one, and it is measured below.
+declaration channel. The protocol has a partial one, measured below; a
+reviewed `--manifest` is a trusted one, for tools an operator has read.
 
 The split is pinned by `test/unrecognised.test.ts`, so a change to the
 vocabulary that moves any number in the table fails CI rather than drifting
@@ -520,8 +527,12 @@ approving, and was previously unsayable.
   it to 16 of 22. Six non-destructive, closed-world writes are still
   unreached, and so is any privilege change worded outside that second
   vocabulary too — `revoke_access` is caught by luck of wording, not by
-  anything that would generalise. A signature over a reviewed manifest would
-  be the actual fix.
+  anything that would generalise. The actual fix is `--manifest`: a reviewed
+  capability file where an operator who has read a tool writes down what it
+  really does, added as a floor exactly like any declared effect, and verified
+  against a hash pinned with `--manifest-sha` so a server or agent that later
+  swaps the file cannot launder a tool past the gate. The lexical deriver stays
+  the fallback for tools no one has reviewed.
 - **Path confinement needs a resolver to be sound.** With `nodeResolver`
   supplied, symlink escapes are caught against a real filesystem and an
   unresolvable path is reported as *unknown* rather than safe. Without one — in
@@ -635,6 +646,7 @@ src/core/verify.ts       the one-way checks, and prose assembly
 src/core/narrate.ts      the untrusted half, pluggable
 src/core/resolver.node.ts filesystem resolution, kept out of the browser bundle
 src/mcp/adapt.ts         MCP definitions → something derivable, and what was lost
+src/mcp/manifest.ts      a reviewed capability manifest: effects and boundaries, hash-verified
 src/mcp/gate.ts          the guard: derive → narrate → verify → render
 src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
 src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
@@ -643,6 +655,7 @@ test/gate.test.ts        attack suite + calibration
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
 test/privilege.test.ts   privilege changes: a floor independent of the server's hints
+test/manifest.test.ts    the manifest: parsing, validation, and the integrity hash
 test/scope.test.ts       explicit scope large enough to escalate on its own, not just the verb
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
