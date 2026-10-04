@@ -86,6 +86,13 @@ export function parseManifest(text: string): ParseResult {
       return { ok: false, error: '"effects" must be an object of tool names to effect lists' };
     }
     for (const [tool, value] of Object.entries(obj.effects as Record<string, unknown>)) {
+      // `declaredEffects["__proto__"] = x` replaces the object's prototype rather
+      // than adding an entry, so the tool would be silently left out while the
+      // manifest still parsed. Refuse it instead of passing a manifest that says
+      // less than it appears to.
+      if (tool === '__proto__') {
+        return { ok: false, error: '"effects" cannot be keyed "__proto__" (it would not be recorded)' };
+      }
       if (!Array.isArray(value)) {
         return { ok: false, error: `"effects.${tool}" must be a list of effects` };
       }

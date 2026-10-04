@@ -136,3 +136,9 @@ test('coverage says which offered tools the manifest has not reviewed', () => {
     { reviewed: ['terminate_instance'], unreviewed: [] }, 'a repeated name is counted once');
 });
 
+test('a "__proto__" tool name is refused, not silently swallowed', () => {
+  const r = parseManifest('{"version":1,"effects":{"__proto__":["delete"],"ok_tool":["read"]}}');
+  assert.ok(!r.ok);
+  assert.match(r.error, /__proto__/);
+});
+
