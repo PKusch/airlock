@@ -42,6 +42,39 @@ export function manifestSha(text: string): string {
 }
 
 /**
+ * Keys that appear more than once in the same JSON object, in the order met.
+ * JSON.parse keeps the last of two identical keys and says nothing, so a manifest
+ * with `"terminate_instance": ["delete"]` and, further down,
+ * `"terminate_instance": []` would quietly declare nothing. Only called on text
+ * JSON.parse has already accepted, so it walks the structure without re-checking
+ * it. Keys are compared after decoding, so "a" and "\u0061" are the same key.
+ */
+export function duplicateKeys(text: string): string[] {
+  const dups: string[] = [];
+  const stack: Array<Set<string> | null> = []; // a Set for an object, null for an array
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') stack.push(new Set());
+    else if (ch === '[') stack.push(null);
+    else if (ch === '}' || ch === ']') stack.pop();
+    else if (ch === '"') {
+      let j = i + 1;
+      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      const token = JSON.parse(text.slice(i, j + 1)) as string;
+      let k = j + 1;
+      while (k < text.length && /\s/.test(text[k])) k++;
+      const seen = stack[stack.length - 1];
+      if (seen && text[k] === ':') {
+        if (seen.has(token)) dups.push(token);
+        seen.add(token);
+      }
+      i = j;
+    }
+  }
+  return dups;
+}
+
+/**
  * Read a manifest's text into confinement and declared effects, or one reason it
  * is not a manifest. Nothing here throws: a hand-edited or damaged file must fail
  * closed with a message, never slip through as an empty manifest that asserts
@@ -56,6 +89,10 @@ export function parseManifest(text: string): ParseResult {
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return { ok: false, error: 'a manifest is a JSON object' };
+  }
+  const repeated = duplicateKeys(text);
+  if (repeated.length > 0) {
+    return { ok: false, error: `${repeated.map((k) => JSON.stringify(k)).join(', ')} appears more than once; the last would silently win, so say it once` };
   }
   const obj = data as Record<string, unknown>;
   if (obj.version !== 1) {

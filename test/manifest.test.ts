@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { parseManifest, manifestSha, unmatchedManifestTools, manifestCoverage, EFFECT_KINDS } from '../src/mcp/manifest.ts';
+import { parseManifest, manifestSha, unmatchedManifestTools, manifestCoverage, duplicateKeys, EFFECT_KINDS } from '../src/mcp/manifest.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -152,5 +152,30 @@ test('a misspelled section is refused, not read as a manifest that declares noth
     assert.match(r.error, /unknown key/);
   }
   assert.ok(parseManifest(JSON.stringify({ version: 1, confine: {}, effects: {} })).ok, 'the real sections still parse');
+});
+
+test('a repeated key would silently downgrade a declaration, so it is refused', () => {
+  const r = parseManifest('{"version":1,"effects":{"terminate_instance":["delete"],"terminate_instance":[]}}');
+  assert.ok(!r.ok);
+  assert.match(r.error, /"terminate_instance" appears more than once/);
+});
+
+test('the repeated-key scan finds repeats and only repeats', () => {
+  assert.deepEqual(duplicateKeys('{"a":1,"b":2}'), []);
+  assert.deepEqual(duplicateKeys('{"a":1,"a":2}'), ['a']);
+  // the same key in different objects is ordinary
+  assert.deepEqual(duplicateKeys('{"x":{"a":1},"y":{"a":2},"z":[{"a":3},{"a":4}]}'), []);
+  // a repeat at depth is still found
+  assert.deepEqual(duplicateKeys('{"x":{"a":1,"a":2}}'), ['a']);
+  // an escape decodes to the same key
+  assert.deepEqual(duplicateKeys('{"a":1,"\\u0061":2}'), ['a']);
+  // a string value that looks like a key, braces in strings, an escaped quote
+  assert.deepEqual(duplicateKeys('{"a":"a","b":"{ \\"a\\": [","c":"}"}'), []);
+  // keys split by whitespace before the colon
+  assert.deepEqual(duplicateKeys('{"a" : 1 , "a"\n:2}'), ['a']);
+});
+
+test('the committed example has no repeated key', () => {
+  assert.deepEqual(duplicateKeys(readFileSync(join(root, 'examples/manifest.json'), 'utf8')), []);
 });
 
