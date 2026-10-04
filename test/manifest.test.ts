@@ -142,3 +142,15 @@ test('a "__proto__" tool name is refused, not silently swallowed', () => {
   assert.match(r.error, /__proto__/);
 });
 
+test('a misspelled section is refused, not read as a manifest that declares nothing', () => {
+  for (const bad of [
+    { version: 1, effect: { terminate_instance: ['delete'] } },
+    { version: 1, confinement: { '*.path': '/x' } },
+  ]) {
+    const r = parseManifest(JSON.stringify(bad));
+    assert.ok(!r.ok, JSON.stringify(bad));
+    assert.match(r.error, /unknown key/);
+  }
+  assert.ok(parseManifest(JSON.stringify({ version: 1, confine: {}, effects: {} })).ok, 'the real sections still parse');
+});
+

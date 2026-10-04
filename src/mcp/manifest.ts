@@ -27,6 +27,8 @@ export const EFFECT_KINDS: ReadonlySet<EffectKind> = new Set<EffectKind>([
   'network_egress', 'message_send', 'spend', 'credential_access',
 ]);
 
+const KNOWN_KEYS: ReadonlySet<string> = new Set(['version', 'confine', 'effects']);
+
 export interface Manifest extends AdaptOptions {
   confinement: Record<string, string>;
   declaredEffects: Record<string, EffectKind[]>;
@@ -58,6 +60,15 @@ export function parseManifest(text: string): ParseResult {
   const obj = data as Record<string, unknown>;
   if (obj.version !== 1) {
     return { ok: false, error: `unsupported manifest version ${JSON.stringify(obj.version)} (this build reads version 1)` };
+  }
+
+  // A misspelled section name ("effect" for "effects", "confinement" for
+  // "confine") would be skipped, and the manifest would parse cleanly while
+  // declaring nothing: review that looks done and is not. Refuse any key this
+  // build does not read.
+  const unknown = Object.keys(obj).filter((k) => !KNOWN_KEYS.has(k));
+  if (unknown.length > 0) {
+    return { ok: false, error: `unknown key${unknown.length === 1 ? '' : 's'} ${unknown.map((k) => JSON.stringify(k)).join(', ')}; a manifest has "version", "confine" and "effects"` };
   }
 
   const confinement: Record<string, string> = {};
