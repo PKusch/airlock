@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { readFileSync } from 'node:fs';
+import { SEVERITY } from '../src/core/types.ts';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -177,5 +178,18 @@ test('the repeated-key scan finds repeats and only repeats', () => {
 
 test('the committed example has no repeated key', () => {
   assert.deepEqual(duplicateKeys(readFileSync(join(root, 'examples/manifest.json'), 'utf8')), []);
+});
+
+test('an empty declared list never clears a tool the gate can read for itself', async () => {
+  const { gate } = await import('../src/mcp/gate.ts');
+  const def = { name: 'delete_file', description: 'Delete a file.',
+    inputSchema: { type: 'object' as const, properties: { path: { type: 'string' } } } };
+  const call = { id: 'c3', tool: 'delete_file', args: { path: '/a/b' } };
+
+  const without = await gate(def, call, {});
+  const claimsNothing = await gate(def, call, { declaredEffects: { delete_file: [] } });
+  assert.ok(claimsNothing.facts.effects.includes('delete'), 'the gate still reads the delete');
+  assert.ok(SEVERITY[claimsNothing.facts.severity] >= SEVERITY[without.facts.severity], 'and is no more lenient for the claim');
+  assert.ok(claimsNothing.facts.signals.some((s) => s.code === 'undeclared_effect'), 'the disagreement is itself recorded');
 });
 

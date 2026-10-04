@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 136 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 137 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -31,7 +31,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 136 tests run in CI on every push and pull request, across
+The type check and all 137 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -533,7 +533,9 @@ your word over its own guess.
 - **`effects`** lists what each tool does, from `read`, `write`, `delete`,
   `execute`, `network_egress`, `message_send`, `spend` and `credential_access`.
   An effect you list only ever adds to what the gate works out. It never lowers
-  anything. An empty list means you read the tool and it does nothing risky.
+  anything. An empty list says you read the tool and found nothing to add, and it
+  is not a way to clear a tool: if the gate's own reading still finds a delete,
+  it keeps it and treats the disagreement as a reason to stop harder, not softer.
 - **`confine`** names the places a parameter may reach, as `tool.param` or
   `*.param` for every tool. A key with no dot matches nothing, so it is refused.
 - **`version`** is `1`.
