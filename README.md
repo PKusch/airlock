@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 124 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 130 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -31,7 +31,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 124 tests run in CI on every push and pull request, across
+The type check and all 130 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -532,7 +532,14 @@ approving, and was previously unsayable.
   really does, added as a floor exactly like any declared effect, and verified
   against a hash pinned with `--manifest-sha` so a server or agent that later
   swaps the file cannot launder a tool past the gate. The lexical deriver stays
-  the fallback for tools no one has reviewed.
+  the fallback for tools no one has reviewed, and the proxy says which those are:
+  on the first `tools/list` it prints how many offered tools the manifest covers
+  and names the rest, and it names any manifest entry for a tool the server does
+  not offer (a misspelling would otherwise review nothing and look reviewed). On
+  the consent card a declared effect is marked as declared in advance, so a person
+  can tell a reviewed word from the deriver's guess. What it is not: a signature.
+  The hash proves the file is the one you pinned, not that anyone read the tools
+  well, and the browser UI does not take a manifest.
 - **Path confinement needs a resolver to be sound.** With `nodeResolver`
   supplied, symlink escapes are caught against a real filesystem and an
   unresolvable path is reported as *unknown* rather than safe. Without one — in
