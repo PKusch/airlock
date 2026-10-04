@@ -182,6 +182,15 @@ function factLines(facts: DerivedFacts): string[] {
       : `This ${facts.effects.map((e) => EFFECT_PROSE[e] ?? e).join(', and ')}.`,
   );
 
+  // Where the effects came from. A person weighing a card should know that
+  // "deletes data" was written down in advance by someone who read the tool, not
+  // guessed from its name. Said only when something was declared.
+  if (facts.declaredEffects && facts.declaredEffects.length > 0) {
+    lines.push(
+      `Declared in advance rather than guessed: ${facts.declaredEffects.map((e) => EFFECT_PROSE[e] ?? e).join(', and ')}.`,
+    );
+  }
+
   const items = facts.targets.filter((t) => t.role === 'path' || t.role === 'glob' || t.role === 'subject');
   if (items.length > 0) {
     const named = namedItems(items);

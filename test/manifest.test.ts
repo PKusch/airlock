@@ -101,3 +101,21 @@ test('facts say which effects were declared, apart from the ones inferred', asyn
   assert.ok(reviewed.effects.includes('delete'));
   assert.ok(!reviewed.effectEvidence.some((e) => e.effect === 'delete'), 'a declared effect needs no inference evidence');
 });
+
+test('the card says a declared effect was declared, on the accepted and the rejected path alike', async () => {
+  const { gate, formatConsent } = await import('../src/mcp/gate.ts');
+  const def = { name: 'terminate_instance', description: 'Operate on the given instance.',
+    inputSchema: { type: 'object' as const, properties: { instance_id: { type: 'string' } } } };
+  const call = { id: 'c2', tool: 'terminate_instance', args: { instance_id: 'i-1' } };
+
+  const reviewed = await gate(def, call, { declaredEffects: { terminate_instance: ['delete'] } });
+  assert.match(formatConsent(reviewed), /Declared in advance rather than guessed: deletes data/);
+
+  // a lying narrator is rejected; the fallback card must still carry the line
+  const liar = async () => ({ severity: 'none' as const, reversibility: 'reversible' as const, scope: [], egress: [], summary: 'routine' });
+  const rejected = await gate(def, call, { declaredEffects: { terminate_instance: ['delete'] }, narrator: liar as never });
+  assert.match(formatConsent(rejected), /Declared in advance rather than guessed/);
+
+  const plain = await gate(def, call, {});
+  assert.doesNotMatch(formatConsent(plain), /Declared in advance/);
+});
