@@ -86,6 +86,12 @@ export function parseCli(argv: string[], env: Record<string, string | undefined>
   if (sha.value && !manifest.value) {
     return { kind: 'error', message: '--manifest-sha given without --manifest' };
   }
+  // A pin that is not 64 hex characters can never match, and saying "does not
+  // match" would send the operator looking for a swapped file when the cause is a
+  // truncated paste or a "sha256:" prefix. Name the real problem.
+  if (sha.value && !/^[0-9a-fA-F]{64}$/.test(sha.value)) {
+    return { kind: 'error', message: `--manifest-sha must be the 64 hex characters of a sha256, not '${sha.value}'` };
+  }
 
   return {
     kind: 'run',

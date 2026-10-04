@@ -64,14 +64,26 @@ test('the manifest flags: parsed before "--", and not stolen from the command af
   assert.deepEqual(parseCli(['--manifest', 'm.json', '--', 'srv'], {}), {
     kind: 'run', command: 'srv', args: [], confinement: {}, manifestPath: 'm.json',
   });
-  assert.deepEqual(parseCli(['--manifest', 'm.json', '--manifest-sha', 'abc123', '--', 'srv'], {}), {
-    kind: 'run', command: 'srv', args: [], confinement: {}, manifestPath: 'm.json', manifestSha: 'abc123',
+  const pin = 'abc123'.padEnd(64, '0');
+  assert.deepEqual(parseCli(['--manifest', 'm.json', '--manifest-sha', pin, '--', 'srv'], {}), {
+    kind: 'run', command: 'srv', args: [], confinement: {}, manifestPath: 'm.json', manifestSha: pin,
   });
   // a --manifest meant for the wrapped server (after --) is left alone
   const r = parseCli(['--', 'srv', '--manifest', 'x'], {});
   assert.equal(r.kind, 'run');
   assert.deepEqual((r as { args: string[] }).args, ['--manifest', 'x']);
   assert.ok(!('manifestPath' in r));
+});
+
+test('a pin that is not a sha256 is called that, not reported as a mismatch', () => {
+  const good = 'a'.repeat(64);
+  assert.equal(parseCli(['--manifest', 'm.json', '--manifest-sha', good, '--', 'srv'], {}).kind, 'run');
+  assert.equal(parseCli(['--manifest', 'm.json', '--manifest-sha', good.toUpperCase(), '--', 'srv'], {}).kind, 'run');
+  for (const bad of ['abc123', 'sha256:' + good, good + 'a', 'g'.repeat(64)]) {
+    const r = parseCli(['--manifest', 'm.json', '--manifest-sha', bad, '--', 'srv'], {});
+    assert.equal(r.kind, 'error', bad);
+    assert.match((r as { message: string }).message, /64 hex characters/, bad);
+  }
 });
 
 test('a manifest flag with no value, or a sha with no manifest, is refused', () => {
