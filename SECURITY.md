@@ -22,6 +22,12 @@ Please report it if you can make any of these happen:
   the level of concern and never lower it.
 - **A call that is not recognised and is let through quietly.** Unfamiliar tool
   names are meant to be treated with suspicion, not waved past.
+- **A manifest that says less than it looks like it says.** A reviewed manifest
+  file that parses cleanly but ends up declaring or confining less than it
+  appears to, for example through a misspelled key, a key written twice, or an
+  odd tool name. Likewise a file that passes the `--manifest-sha` check without
+  matching the pin, or a manifest entry that lowers a severity the gate would
+  otherwise have given. A manifest is only meant to add.
 
 Ordinary bugs, wording you would phrase differently, or tools the vocabulary does
 not recognise yet are welcome as normal issues. `npm run unrecognised` already
