@@ -512,6 +512,41 @@ where this can reach: 'partner@external.example' was not checked against any
 declared boundary"* — which is exactly what a person should know before
 approving, and was previously unsayable.
 
+## The manifest file
+
+Some tools cannot be understood from their names. `terminate_instance` deletes,
+but nothing in how it is written says so. A manifest is a short file where you
+write down what such a tool really does, after reading it. The gate then takes
+your word over its own guess.
+
+```json
+{
+  "version": 1,
+  "confine": { "*.path": "/Users/me/projects" },
+  "effects": {
+    "terminate_instance": ["delete"],
+    "get_status": []
+  }
+}
+```
+
+- **`effects`** lists what each tool does, from `read`, `write`, `delete`,
+  `execute`, `network_egress`, `message_send`, `spend` and `credential_access`.
+  An effect you list only ever adds to what the gate works out. It never lowers
+  anything. An empty list means you read the tool and it does nothing risky.
+- **`confine`** names the places a parameter may reach, as `tool.param` or
+  `*.param` for every tool. A key with no dot matches nothing, so it is refused.
+- **`version`** is `1`.
+
+The file is checked hard, because a manifest that says less than it looks like it
+says is worse than none. These are all refused, each with the reason: a bad
+effect name, a section name this build does not read (`effect` for `effects`), a
+key written twice (the last would silently win), and a tool named `__proto__`.
+
+Pin the file with `--manifest-sha` and a swapped copy is refused instead of
+trusted. Leave the pin out and the manifest still works, but is printed as
+unverified along with the hash to pin. `examples/manifest.json` is a complete one.
+
 ## Limits I would not paper over
 
 - **Effect inference is lexical.** Effects are inferred from stems in the tool's
