@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { parseManifest, manifestSha, unmatchedManifestTools, EFFECT_KINDS } from '../src/mcp/manifest.ts';
+import { parseManifest, manifestSha, unmatchedManifestTools, manifestCoverage, EFFECT_KINDS } from '../src/mcp/manifest.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -125,5 +125,14 @@ test('manifest entries for tools the server does not offer are named', () => {
   assert.deepEqual(unmatchedManifestTools(declared, ['get_status', 'terminate_instance']), ['terminate_instnace']);
   assert.deepEqual(unmatchedManifestTools(declared, ['get_status', 'terminate_instnace']), []);
   assert.deepEqual(unmatchedManifestTools(undefined, ['x']), []);
+});
+
+test('coverage says which offered tools the manifest has not reviewed', () => {
+  const declared = { terminate_instance: ['delete' as const] };
+  assert.deepEqual(manifestCoverage(declared, ['get_status', 'terminate_instance']),
+    { reviewed: ['terminate_instance'], unreviewed: ['get_status'] });
+  assert.deepEqual(manifestCoverage({}, ['a', 'b']), { reviewed: [], unreviewed: ['a', 'b'] });
+  assert.deepEqual(manifestCoverage(declared, ['terminate_instance', 'terminate_instance']),
+    { reviewed: ['terminate_instance'], unreviewed: [] }, 'a repeated name is counted once');
 });
 

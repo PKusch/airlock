@@ -278,3 +278,29 @@ test('the proxy says once when a manifest names a tool the server does not offer
   assert.doesNotMatch(err, /'get_status'/, 'a tool that exists is not named');
 });
 
+test('the proxy reports how many offered tools the manifest covers, once', async () => {
+  const server = join(here, 'unreadable-tool-server.mjs');
+  const text = JSON.stringify({ version: 1, effects: { terminate_instance: ['delete'] } });
+  const m = join(here, '.tmp-coverage-manifest.json');
+  writeFileSync(m, text);
+  const proxy = spawn(process.execPath,
+    ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), '--manifest', m, '--manifest-sha', manifestSha(text), '--', process.execPath, server],
+    { stdio: ['pipe', 'pipe', 'pipe'] });
+  let err = '';
+  proxy.stderr.on('data', (d) => (err += d));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no tools/list reply')), 10000);
+      createInterface({ input: proxy.stdout }).on('line', () => { clearTimeout(timer); resolve(); });
+      proxy.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) + '\n');
+      proxy.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) + '\n');
+    });
+    await new Promise((r) => setTimeout(r, 300));
+  } finally {
+    proxy.kill();
+    rmSync(m, { force: true });
+  }
+  assert.match(err, /manifest covers 1 of 2 tool\(s\); judged by name and schema alone: get_status/);
+  assert.equal((err.match(/manifest covers/g) ?? []).length, 1, 'said once, not per tools/list');
+});
+

@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 
 import { gate, formatConsent, type GateOptions } from './gate.ts';
 import type { McpToolDefinition } from './adapt.ts';
-import { unmatchedManifestTools } from './manifest.ts';
+import { manifestCoverage, unmatchedManifestTools } from './manifest.ts';
 
 /**
  * A stdio MCP proxy. It sits between a client and a real MCP server, learns the
@@ -52,6 +52,7 @@ export function startProxy(command: string, args: string[], options: ProxyOption
    */
   /** The manifest-names warning is said once, not on every tools/list. */
   let warnedUnmatched = false;
+  let reportedCoverage = false;
   const listWaiters: Array<() => void> = [];
   const releaseListWaiters = () => {
     while (listWaiters.length > 0) listWaiters.shift()!();
@@ -90,6 +91,11 @@ export function startProxy(command: string, args: string[], options: ProxyOption
         if (unmatched.length > 0 && !warnedUnmatched) {
           warnedUnmatched = true;
           console.error(`airlock: the manifest declares effects for ${unmatched.map((t) => `'${t}'`).join(', ')}, which the server does not offer; check the spelling.`);
+        }
+        if (!reportedCoverage && Object.keys(options.declaredEffects ?? {}).length > 0) {
+          reportedCoverage = true;
+          const { reviewed, unreviewed } = manifestCoverage(options.declaredEffects, tools.keys());
+          console.error(`airlock: manifest covers ${reviewed.length} of ${tools.size} tool(s)` + (unreviewed.length > 0 ? `; judged by name and schema alone: ${unreviewed.join(', ')}` : '.'));
         }
         releaseListWaiters();
       }

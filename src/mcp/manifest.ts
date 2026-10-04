@@ -116,3 +116,20 @@ export function unmatchedManifestTools(
   return Object.keys(declaredEffects ?? {}).filter((tool) => !have.has(tool)).sort();
 }
 
+/**
+ * How much of what the server offers a manifest actually covers. A tool with no
+ * entry is not thereby unsafe, but it is still judged by the lexical guess the
+ * manifest exists to replace, and an operator who loaded one should be able to
+ * see how many tools that still is.
+ */
+export function manifestCoverage(
+  declaredEffects: Record<string, EffectKind[]> | undefined,
+  offered: Iterable<string>,
+): { reviewed: string[]; unreviewed: string[] } {
+  const reviewedNames = new Set(Object.keys(declaredEffects ?? {}));
+  const reviewed: string[] = [];
+  const unreviewed: string[] = [];
+  for (const name of new Set(offered)) (reviewedNames.has(name) ? reviewed : unreviewed).push(name);
+  return { reviewed: reviewed.sort(), unreviewed: unreviewed.sort() };
+}
+
