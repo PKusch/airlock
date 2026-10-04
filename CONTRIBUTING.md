@@ -27,7 +27,9 @@ npm run lint # tsc --noEmit
 `npm run audit` scores the deriver against 36 real tool definitions. The effect
 vocabulary is deliberately finite and English: please do **not** add a verb just
 because `npm run unrecognised` lists it — that corpus is held out to measure the
-gap, and tuning on it would make the number meaningless.
+gap, and tuning on it would make the number meaningless. If a tool the vocabulary
+cannot read matters to you, write it into a manifest (`examples/manifest.json`)
+instead: that covers your tool without touching the measurement.
 
 ## In plain words
 
