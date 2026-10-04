@@ -100,3 +100,19 @@ export function parseManifest(text: string): ParseResult {
 
   return { ok: true, manifest: { confinement, declaredEffects } };
 }
+
+/**
+ * Manifest entries that name a tool the server does not offer. An entry for
+ * `terminate_instnace` applies to nothing, yet looks like review happened, which
+ * is the same quiet failure as a boundary that matches no parameter. Checked once
+ * the server's own tools/list has arrived, since that is the first moment the
+ * names can be compared.
+ */
+export function unmatchedManifestTools(
+  declaredEffects: Record<string, EffectKind[]> | undefined,
+  offered: Iterable<string>,
+): string[] {
+  const have = new Set(offered);
+  return Object.keys(declaredEffects ?? {}).filter((tool) => !have.has(tool)).sort();
+}
+

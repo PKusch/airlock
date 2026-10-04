@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 
 import { gate, formatConsent, type GateOptions } from './gate.ts';
 import type { McpToolDefinition } from './adapt.ts';
+import { unmatchedManifestTools } from './manifest.ts';
 
 /**
  * A stdio MCP proxy. It sits between a client and a real MCP server, learns the
@@ -49,6 +50,8 @@ export function startProxy(command: string, args: string[], options: ProxyOption
    * catalogue would refuse perfectly ordinary calls. So a call for an unknown
    * tool waits for any list already in flight before it is judged.
    */
+  /** The manifest-names warning is said once, not on every tools/list. */
+  let warnedUnmatched = false;
   const listWaiters: Array<() => void> = [];
   const releaseListWaiters = () => {
     while (listWaiters.length > 0) listWaiters.shift()!();
@@ -82,7 +85,14 @@ export function startProxy(command: string, args: string[], options: ProxyOption
       for (const def of result?.tools ?? []) {
         if (def && typeof def === 'object' && typeof def.name === 'string') tools.set(def.name, def);
       }
-      if (listRequests.size === 0) releaseListWaiters();
+      if (listRequests.size === 0) {
+        const unmatched = unmatchedManifestTools(options.declaredEffects, tools.keys());
+        if (unmatched.length > 0 && !warnedUnmatched) {
+          warnedUnmatched = true;
+          console.error(`airlock: the manifest declares effects for ${unmatched.map((t) => `'${t}'`).join(', ')}, which the server does not offer; check the spelling.`);
+        }
+        releaseListWaiters();
+      }
     }
 
     send(process.stdout, message);

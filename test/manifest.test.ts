@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { parseManifest, manifestSha, EFFECT_KINDS } from '../src/mcp/manifest.ts';
+import { parseManifest, manifestSha, unmatchedManifestTools, EFFECT_KINDS } from '../src/mcp/manifest.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -119,3 +119,11 @@ test('the card says a declared effect was declared, on the accepted and the reje
   const plain = await gate(def, call, {});
   assert.doesNotMatch(formatConsent(plain), /Declared in advance/);
 });
+
+test('manifest entries for tools the server does not offer are named', () => {
+  const declared = { terminate_instnace: ['delete' as const], get_status: [] as never[] };
+  assert.deepEqual(unmatchedManifestTools(declared, ['get_status', 'terminate_instance']), ['terminate_instnace']);
+  assert.deepEqual(unmatchedManifestTools(declared, ['get_status', 'terminate_instnace']), []);
+  assert.deepEqual(unmatchedManifestTools(undefined, ['x']), []);
+});
+

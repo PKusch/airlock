@@ -251,3 +251,30 @@ test('a manifest catches a destructive tool the lexical deriver cannot read', as
   }
 });
 
+test('the proxy says once when a manifest names a tool the server does not offer', async () => {
+  const server = join(here, 'unreadable-tool-server.mjs');
+  const text = JSON.stringify({ version: 1, effects: { terminate_instnace: ['delete'], get_status: [] } });
+  const m = join(here, '.tmp-typo-manifest.json');
+  writeFileSync(m, text);
+  const proxy = spawn(process.execPath,
+    ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), '--manifest', m, '--manifest-sha', manifestSha(text), '--', process.execPath, server],
+    { stdio: ['pipe', 'pipe', 'pipe'] });
+  let err = '';
+  proxy.stderr.on('data', (d) => (err += d));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no tools/list reply')), 10000);
+      createInterface({ input: proxy.stdout }).on('line', () => { clearTimeout(timer); resolve(); });
+      proxy.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) + '\n');
+      proxy.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) + '\n');
+    });
+    await new Promise((r) => setTimeout(r, 300));
+  } finally {
+    proxy.kill();
+    rmSync(m, { force: true });
+  }
+  assert.match(err, /declares effects for 'terminate_instnace', which the server does not offer/);
+  assert.equal((err.match(/which the server does not offer/g) ?? []).length, 1, 'said once, not per tools/list');
+  assert.doesNotMatch(err, /'get_status'/, 'a tool that exists is not named');
+});
+
