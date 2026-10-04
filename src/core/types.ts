@@ -155,6 +155,13 @@ export interface DerivedFacts {
    */
   effectEvidence: EffectEvidence[];
   /**
+   * The effects someone declared for this tool, whether the tool itself or an
+   * operator's reviewed manifest. Present only when there were any. These are
+   * the effects `effectEvidence` leaves out, so together the two account for
+   * where every effect on the card came from.
+   */
+  declaredEffects?: EffectKind[];
+  /**
    * Whether the deriver understood what this tool does at all. An empty
    * `effects` used to be read as "does nothing" and scored `none` — the same
    * collapse as `escapes === false`, in the same permissive direction. A tool

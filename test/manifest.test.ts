@@ -85,3 +85,19 @@ test('the committed example manifest is valid', () => {
   assert.deepEqual(r.manifest.declaredEffects.terminate_instance, ['delete']);
 });
 
+
+test('facts say which effects were declared, apart from the ones inferred', async () => {
+  const { adaptMcpTool } = await import('../src/mcp/adapt.ts');
+  const { deriveFacts } = await import('../src/core/derive.ts');
+  const def = { name: 'terminate_instance', description: 'Operate on the given instance.',
+    inputSchema: { type: 'object' as const, properties: { instance_id: { type: 'string' } } } };
+  const call = { id: 'c1', tool: 'terminate_instance', args: { instance_id: 'i-1' } };
+
+  const plain = deriveFacts(adaptMcpTool(def), call);
+  assert.equal(plain.declaredEffects, undefined, 'nothing declared, so the field is absent');
+
+  const reviewed = deriveFacts(adaptMcpTool(def, { declaredEffects: { terminate_instance: ['delete'] } }), call);
+  assert.deepEqual(reviewed.declaredEffects, ['delete']);
+  assert.ok(reviewed.effects.includes('delete'));
+  assert.ok(!reviewed.effectEvidence.some((e) => e.effect === 'delete'), 'a declared effect needs no inference evidence');
+});

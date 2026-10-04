@@ -480,6 +480,7 @@ export function deriveFacts(schema: ToolSchema, call: ToolCall, options: DeriveO
     egress,
     severity: deriveSeverity(effects, targets, isUnbounded, signals, declared, hasArbitraryCommand, canDeclare, recognition, self, contradicted, Boolean(privilegeChange)),
     effectEvidence,
+    ...(declared.size > 0 ? { declaredEffects: [...declared].sort() } : {}),
     recognition,
     signals,
     ...(self ? { selfDescription: self } : {}),
