@@ -22,6 +22,21 @@ export interface GateDecision {
 }
 
 /**
+ * The severity at or above which a person must approve. An unknown name used to
+ * make `SEVERITY[name]` undefined, so `severity >= undefined` was false for every
+ * call and nothing was ever stopped: a typo such as 'hihg' turned the gate off
+ * without a word. A threshold that is not a severity is refused instead, which
+ * fails closed (the proxy turns the throw into a refusal).
+ */
+export function thresholdRank(threshold: keyof typeof SEVERITY | undefined): number {
+  const name = threshold ?? 'high';
+  if (!Object.prototype.hasOwnProperty.call(SEVERITY, name)) {
+    throw new Error(`threshold '${String(name)}' is not a severity; use one of ${Object.keys(SEVERITY).join(', ')}`);
+  }
+  return SEVERITY[name];
+}
+
+/**
  * The guard. Everything a host needs to decide whether to interrupt someone,
  * and what to put in front of them if it does.
  */
@@ -30,6 +45,7 @@ export async function gate(
   call: ToolCall,
   options: GateOptions = {},
 ): Promise<GateDecision> {
+  const rank = thresholdRank(options.threshold);
   const schema = adaptMcpTool(def, options);
   const facts = deriveFacts(schema, call, { resolver: options.resolver });
 
@@ -44,7 +60,7 @@ export async function gate(
     facts,
     verdict,
     consent,
-    requiresApproval: SEVERITY[facts.severity] >= SEVERITY[options.threshold ?? 'high'],
+    requiresApproval: SEVERITY[facts.severity] >= rank,
     gaps: adaptationGaps(schema),
   };
 }

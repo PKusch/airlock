@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
-import { gate, formatConsent, type GateOptions } from './gate.ts';
+import { gate, formatConsent, thresholdRank, type GateOptions } from './gate.ts';
 import type { McpToolDefinition } from './adapt.ts';
 import { manifestCoverage, unmatchedManifestTools } from './manifest.ts';
 
@@ -30,6 +30,10 @@ export interface ProxyOptions extends GateOptions {
 }
 
 export function startProxy(command: string, args: string[], options: ProxyOptions = {}) {
+  // A threshold that is not a severity is refused before the server is even
+  // spawned, rather than on every call: see thresholdRank.
+  thresholdRank(options.threshold);
+
   // stderr is inherited so the wrapped server's own diagnostics still reach
   // the operator rather than being swallowed by the proxy.
   const server = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
