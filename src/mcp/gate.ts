@@ -46,6 +46,14 @@ export async function gate(
   options: GateOptions = {},
 ): Promise<GateDecision> {
   const rank = thresholdRank(options.threshold);
+  // Arguments are read by name, so something that is not an object has nothing to
+  // read: a string or an array has no `path`, derives to `low`, and the call used to
+  // be forwarded without ever having been judged. What cannot be judged is refused,
+  // the same as a tool whose definition was never seen. (A missing `arguments` is
+  // fine and arrives here as {}.)
+  if (call.args === null || typeof call.args !== 'object' || Array.isArray(call.args)) {
+    throw new Error('the call\'s arguments must be an object, so it cannot be judged');
+  }
   const schema = adaptMcpTool(def, options);
   const facts = deriveFacts(schema, call, { resolver: options.resolver });
 

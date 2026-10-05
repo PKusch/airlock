@@ -304,3 +304,23 @@ test('the proxy reports how many offered tools the manifest covers, once', async
   assert.equal((err.match(/manifest covers/g) ?? []).length, 1, 'said once, not per tools/list');
 });
 
+test('arguments that are not an object are refused, not forwarded unjudged', async () => {
+  // A string or an array has no `path`, so it used to derive to low and be
+  // forwarded to the server without being judged at all.
+  const responses = await driveProxy([
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_text_file', arguments: 'oops' } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'read_text_file', arguments: ['/etc/passwd'] } },
+    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'read_text_file', arguments: { path: '/HOME/projects/README.md' } } },
+    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'read_text_file' } },
+  ]);
+  const byId = new Map(responses.map((r) => [r.id, r]));
+  for (const id of [2, 3]) {
+    assert.ok(byId.get(id).error, `id ${id}: refused`);
+    assert.match(byId.get(id).error.message, /could not be judged/);
+    assert.ok(!('result' in byId.get(id)), `id ${id}: never reached the server`);
+  }
+  assert.equal(byId.get(4).error, undefined, 'an ordinary call is still forwarded');
+  assert.equal(byId.get(5).error, undefined, 'a call with no arguments at all is still judged as having none');
+});
+
