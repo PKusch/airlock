@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 155 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 159 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -31,7 +31,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 155 tests run in CI on every push and pull request, across
+The type check and all 159 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -582,7 +582,12 @@ unverified along with the hash to pin. `examples/manifest.json` is a complete on
   unresolvable path is reported as *unknown* rather than safe. Without one — in
   the browser, where there is no filesystem — the check is string-only, and a
   symlink inside the confined directory pointing out of it passes. The UI runs
-  in that weaker mode by construction.
+  in that weaker mode by construction. Both `/` and `\` are read as separators,
+  because on a Windows-hosted server `a\..\..\b` walks up two levels; reading only
+  `/` judged `/HOME/projects/x\..\..\.ssh` to be inside the boundary. The cost is
+  a false alarm for a POSIX filename that really contains a backslash and a `..`.
+  A drive letter such as `C:` is not understood, so a Windows absolute path is
+  treated as outside any POSIX boundary: stricter, never looser.
 - **No live model is wired in.** The narrator interface and prompt exist;
   nothing calls an API. This is deliberate rather than unfinished: the attack
   suite runs against a *fully compromised* narrator, which is a strictly
@@ -718,6 +723,7 @@ src/mcp/args.ts          the command line and AIRLOCK_CONFINE, read as data
 src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
 corpus/                  36 real MCP definitions with ground truth; two corpora (22 + 28 tools) of verbs the vocabulary did not know
 test/gate.test.ts        attack suite + calibration
+test/paths.test.ts       the boundary check against real path semantics, with a backslash-heavy fuzz
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
 test/privilege.test.ts   privilege changes: a floor independent of the server's hints

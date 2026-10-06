@@ -143,10 +143,15 @@ const INSTRUCTION_SHAPED =
 
 /** Normalise a POSIX-ish path without pulling in `node:path` (this runs in the browser too). */
 export function normalisePath(raw: string): string {
-  const expanded = raw.replace(/^~(?=\/|$)/, '/HOME');
-  const isAbsolute = expanded.startsWith('/');
+  // A backslash separates segments too. On a Windows-hosted server `a\..\..\b` walks
+  // up two levels, and a check that split only on '/' saw one harmless segment named
+  // `a\..\..\b`, so '/HOME/projects/x\..\..\.ssh' was judged inside the boundary.
+  // Reading '\' as a separator can only make the check stricter: the one cost is a
+  // false alarm for a POSIX filename that really contains a backslash and a '..'.
+  const expanded = raw.replace(/^~(?=[\\/]|$)/, '/HOME');
+  const isAbsolute = /^[\\/]/.test(expanded);
   const out: string[] = [];
-  for (const segment of expanded.split('/')) {
+  for (const segment of expanded.split(/[\\/]/)) {
     if (segment === '' || segment === '.') continue;
     if (segment === '..') {
       // Popping past the root of a relative path is what an escape looks like,
