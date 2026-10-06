@@ -19,6 +19,10 @@
 import { createHash } from 'node:crypto';
 
 import type { AdaptOptions } from './adapt.ts';
+import { duplicateKeys } from './json.ts';
+
+// Re-exported so existing callers keep one import for everything manifest-shaped.
+export { duplicateKeys };
 import type { EffectKind } from '../core/types.ts';
 
 /** The eight effects the deriver understands, as a runtime set for validation. */
@@ -39,39 +43,6 @@ export type ParseResult = { ok: true; manifest: Manifest } | { ok: false; error:
 /** The sha256 of the manifest's exact bytes, as the operator pins it. */
 export function manifestSha(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
-}
-
-/**
- * Keys that appear more than once in the same JSON object, in the order met.
- * JSON.parse keeps the last of two identical keys and says nothing, so a manifest
- * with `"terminate_instance": ["delete"]` and, further down,
- * `"terminate_instance": []` would quietly declare nothing. Only called on text
- * JSON.parse has already accepted, so it walks the structure without re-checking
- * it. Keys are compared after decoding, so "a" and "\u0061" are the same key.
- */
-export function duplicateKeys(text: string): string[] {
-  const dups: string[] = [];
-  const stack: Array<Set<string> | null> = []; // a Set for an object, null for an array
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '{') stack.push(new Set());
-    else if (ch === '[') stack.push(null);
-    else if (ch === '}' || ch === ']') stack.pop();
-    else if (ch === '"') {
-      let j = i + 1;
-      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-      const token = JSON.parse(text.slice(i, j + 1)) as string;
-      let k = j + 1;
-      while (k < text.length && /\s/.test(text[k])) k++;
-      const seen = stack[stack.length - 1];
-      if (seen && text[k] === ':') {
-        if (seen.has(token)) dups.push(token);
-        seen.add(token);
-      }
-      i = j;
-    }
-  }
-  return dups;
 }
 
 /**
