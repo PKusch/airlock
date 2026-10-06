@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 152 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 155 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -31,7 +31,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 152 tests run in CI on every push and pull request, across
+The type check and all 155 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -624,6 +624,11 @@ unverified along with the hash to pin. `examples/manifest.json` is a complete on
   `message_id` than the agent sent, and the server acted on a different record than
   the one the person approved. A request that repeats a key is refused, since the
   server's parser, not this one, now decides which copy wins.
+- **The proxy lives as long as the conversation.** When the client disconnects it
+  closes the server's input and, if the server ignores that, kills it after two
+  seconds; when the server exits the proxy exits with the server's own exit code.
+  It used to do neither, so a disconnected client left the wrapped server running,
+  one orphan per session, and a dead server left the client waiting on a dead pipe.
 - **Severity weighed the verb and ignored the scope, until 2026-09-23 — and
   still only sees the scope it can name.** Every rule in `deriveSeverity` keyed
   off which effect a tool had (`write`, `delete`, ...); none of them looked at

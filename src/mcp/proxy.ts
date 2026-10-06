@@ -45,6 +45,24 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     process.exit(127);
   });
 
+  // The proxy lives exactly as long as the conversation. When the client goes away
+  // (stdin closes) the server is told by closing its stdin, and killed after a short
+  // grace if it ignores that; when the server goes away the proxy follows it, with
+  // the server's own exit code. Without this the proxy ran on forever in both cases:
+  // a client that disconnected left the wrapped server running, one orphan per
+  // session, and a server that died left the client waiting on a dead pipe.
+  const GRACE_MS = 2000;
+  process.stdin.on('end', () => {
+    server.stdin.end();
+    setTimeout(() => server.kill(), GRACE_MS).unref();
+  });
+  // 'close' comes after the server's output has been fully read, so nothing the
+  // server said last is cut off by exiting.
+  server.on('close', (code) => {
+    process.exitCode = code ?? 1;     // killed by a signal: no code, which is a failure
+    process.stdin.destroy();          // the proxy's own reader would otherwise keep it alive
+  });
+
   /** Tool definitions learned from the server's own `tools/list` response. */
   const tools = new Map<string, McpToolDefinition>();
   /** Which of our in-flight requests were `tools/list`, so we can read the reply. */

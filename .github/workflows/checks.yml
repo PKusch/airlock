@@ -43,7 +43,7 @@ jobs:
       - name: Type check
         run: npm run lint
 
-      # The 152 tests the README advertises: constraints, attacks, calibration,
+      # The 155 tests the README advertises: constraints, attacks, calibration,
       # symlinks, MCP proxy, the real-corpus audit, the vocabulary gap, the
       # parameter split, MCP annotations and structured payloads.
       - name: Tests
