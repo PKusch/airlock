@@ -22,6 +22,11 @@ Please report it if you can make any of these happen:
   the level of concern and never lower it.
 - **A call that is not recognised and is let through quietly.** Unfamiliar tool
   names are meant to be treated with suspicion, not waved past.
+- **A call that reaches the server without being judged.** Anything that gets a
+  `tools/call` past the proxy unread: a line the proxy's parser rejects but the
+  server's accepts, a batch, a repeated key read differently by the two parsers, or
+  a message the proxy changes on the way through, such as a large integer it
+  rounds. The proxy is meant to forward exactly what it judged, and nothing else.
 - **A manifest that says less than it looks like it says.** A reviewed manifest
   file that parses cleanly but ends up declaring or confining less than it
   appears to, for example through a misspelled key, a key written twice, or an
