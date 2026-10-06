@@ -68,7 +68,7 @@ test('gating a real-shaped MCP call surfaces the escape', async () => {
 // End to end, through an actual child process over actual stdio.
 // ---------------------------------------------------------------------------
 
-function driveProxy(requests: object[], server = join(here, 'fake-mcp-server.mjs'), cliArgs: string[] = []): Promise<any[]> {
+function driveProxy(requests: Array<object | string>, server = join(here, 'fake-mcp-server.mjs'), cliArgs: string[] = []): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const proxy = spawn(
       process.execPath,
@@ -93,7 +93,7 @@ function driveProxy(requests: object[], server = join(here, 'fake-mcp-server.mjs
     });
 
     // Sent in order; the proxy must learn tools/list before the calls land.
-    for (const r of requests) proxy.stdin.write(JSON.stringify(r) + '\n');
+    for (const r of requests) proxy.stdin.write((typeof r === 'string' ? r : JSON.stringify(r)) + '\n');
   });
 }
 
@@ -322,5 +322,31 @@ test('arguments that are not an object are refused, not forwarded unjudged', asy
   }
   assert.equal(byId.get(4).error, undefined, 'an ordinary call is still forwarded');
   assert.equal(byId.get(5).error, undefined, 'a call with no arguments at all is still judged as having none');
+});
+
+test('a call cannot reach a forgiving server inside a batch or as a line the gate cannot read', async () => {
+  // The server accepts a JSON-RPC batch and trailing commas, which JSON.parse does
+  // not. Both used to be forwarded as they were, so the escape below was refused when
+  // sent plainly and executed when it was wrapped or given a trailing comma.
+  const escape = '/HOME/projects/../.ssh/id_rsa';
+  const call = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'read_text_file', arguments: { path: escape } } });
+  const responses = await driveProxy([
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    call(2),
+    JSON.stringify([call(3)]),
+    `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_text_file","arguments":{"path":"${escape}"},},}`,
+    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'read_text_file', arguments: { path: '/HOME/projects/README.md' } } },
+  ], join(here, 'lenient-mcp-server.mjs'));
+
+  const executed = responses.filter((r) => r.result?.content?.[0]?.text?.startsWith('EXECUTED'));
+  assert.deepEqual(executed.map((r) => r.id), [5], 'only the ordinary call reached the server');
+  assert.ok(!executed.some((r) => r.result.content[0].text.includes('.ssh')), 'the escape was never executed');
+
+  const byId = new Map(responses.map((r) => [r.id, r]));
+  assert.match(byId.get(2).error.message, /withheld/, 'the plain escape is still withheld');
+  const nullIds = responses.filter((r) => r.id === null);
+  assert.deepEqual(nullIds.map((r) => r.error.code).sort(), [-32700, -32600].sort(), 'a batch and an unreadable line are each answered as protocol errors');
+  assert.ok(nullIds.some((r) => /batch is refused/.test(r.error.message)));
+  assert.ok(nullIds.some((r) => /not valid JSON/.test(r.error.message)));
 });
 

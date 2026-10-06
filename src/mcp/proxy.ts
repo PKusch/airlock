@@ -115,13 +115,36 @@ export function startProxy(command: string, args: string[], options: ProxyOption
 
   async function handleClientLine(line: string): Promise<void> {
     if (!line.trim()) return;
-    let message: JsonRpc;
+    // Whatever reaches the server has to have been read here first. A line this
+    // parser rejects used to be forwarded as it was, but a server whose parser is
+    // more forgiving (a trailing comma, a comment) would accept it and run a
+    // tools/call the gate never saw. An unreadable line is a protocol error, so it
+    // is answered as one and goes no further.
+    let parsed: unknown;
     try {
-      message = JSON.parse(line);
+      parsed = JSON.parse(line);
     } catch {
-      server.stdin.write(line + '\n');
+      send(process.stdout, {
+        jsonrpc: '2.0',
+        id: null as never,
+        error: { code: -32700, message: 'Airlock: that line is not valid JSON, so it was not forwarded.' },
+      });
       return;
     }
+    // A JSON-RPC batch is an array of requests. It has no `method` of its own, so
+    // it used to fall through as "not a tools/call" and be forwarded whole, with
+    // any tools/call inside it ungated. Judging each member would mean answering
+    // with a batch of our own; the current MCP spec dropped batching, so it is
+    // refused instead.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      send(process.stdout, {
+        jsonrpc: '2.0',
+        id: null as never,
+        error: { code: -32600, message: 'Airlock: only a single JSON-RPC request per line is forwarded (a batch is refused, because its calls cannot each be judged).' },
+      });
+      return;
+    }
+    const message = parsed as JsonRpc;
 
     if (message.method === 'tools/list' && message.id !== undefined) {
       listRequests.add(message.id);

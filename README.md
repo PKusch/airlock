@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 143 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 144 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -31,7 +31,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 143 tests run in CI on every push and pull request, across
+The type check and all 144 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -610,6 +610,14 @@ unverified along with the hash to pin. `examples/manifest.json` is a complete on
   a stdio pipe, so anything at or above the threshold is returned to the client
   as an error carrying the consent card. A host with a real approval UI passes
   `approve`.
+- **The proxy forwards only what it has read, one request per line.** A line it
+  cannot parse is answered with a JSON-RPC parse error, and a JSON-RPC batch (an
+  array of requests) is refused, because each call in it could not be judged.
+  Both used to be forwarded as they were, so a `tools/call` written with a
+  trailing comma, or wrapped in a batch, reached a server with a more forgiving
+  parser without ever being judged: the same escape was withheld when sent plainly
+  and ran when sent that way. The current MCP spec has no batching, so little is
+  lost, but a client that still batches will see its batch refused.
 - **Severity weighed the verb and ignored the scope, until 2026-09-23 — and
   still only sees the scope it can name.** Every rule in `deriveSeverity` keyed
   off which effect a tool had (`write`, `delete`, ...); none of them looked at
