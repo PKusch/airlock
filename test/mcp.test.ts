@@ -350,3 +350,58 @@ test('a call cannot reach a forgiving server inside a batch or as a line the gat
   assert.ok(nullIds.some((r) => /not valid JSON/.test(r.error.message)));
 });
 
+/** Raw output lines from the proxy, unparsed, so an id can be checked byte for byte. */
+function driveRaw(lines: string[], server: string, expect: number): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const proxy = spawn(process.execPath, ['--experimental-strip-types', join(root, 'src/mcp/cli.ts'), '--', process.execPath, server],
+      { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, AIRLOCK_CONFINE: '*.path=/HOME/projects' } });
+    const got: string[] = [];
+    const timer = setTimeout(() => { proxy.kill(); reject(new Error(`timed out with ${got.length}/${expect} lines`)); }, 15000);
+    createInterface({ input: proxy.stdout }).on('line', (l) => {
+      if (!l.trim()) return;
+      got.push(l);
+      if (got.length === expect) { clearTimeout(timer); proxy.kill(); resolve(got); }
+    });
+    for (const l of lines) proxy.stdin.write(l + '\n');
+  });
+}
+
+test('the proxy forwards a call exactly as written, so a 64-bit id reaches the server unchanged', async () => {
+  // JSON.parse then JSON.stringify turns 1234567890123456789 into 1234567890123456800:
+  // the server would act on a different record than the agent asked for and the person
+  // approved, and the reply id would no longer match the request.
+  const big = '1234567890123456789';
+  const raw = await driveRaw([
+    '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+    `{"jsonrpc":"2.0","id":${big},"method":"tools/call","params":{"name":"get_message","arguments":{"message_id":${big}}}}`,
+  ], join(here, 'raw-echo-server.mjs'), 2);
+  const call = raw.find((l) => l.includes('SERVER SAW'))!;
+  assert.ok(call.includes(`\\"message_id\\":${big}`), 'the server saw the exact message_id: ' + call.slice(0, 160));
+  assert.ok(!call.includes('1234567890123456800'), 'and not the rounded one');
+  assert.ok(call.startsWith(`{"jsonrpc":"2.0","id":${big},`), 'the reply id is the one the client sent, byte for byte');
+});
+
+test('a refused call answers with the id as the client wrote it', async () => {
+  const big = '1234567890123456789';
+  const raw = await driveRaw([
+    '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+    `{"jsonrpc":"2.0","id":${big},"method":"tools/call","params":{"name":"read_text_file","arguments":{"path":"/HOME/projects/../.ssh/id_rsa"}}}`,
+    `{"jsonrpc":"2.0","id":"req-\\u00e9","method":"tools/call","params":{"name":"nope","arguments":{}}}`,
+  ], join(here, 'raw-echo-server.mjs'), 3);
+  const withheld = raw.find((l) => l.includes('withheld'))!;
+  assert.ok(withheld.startsWith(`{"jsonrpc":"2.0","id":${big},"error":`), 'a big integer id survives the refusal: ' + withheld.slice(0, 80));
+  const unknown = raw.find((l) => l.includes('no tool definition'))!;
+  assert.ok(unknown.startsWith('{"jsonrpc":"2.0","id":"req-\\u00e9","error":'), 'a string id keeps its escape exactly');
+});
+
+test('a request that repeats a key is refused, because parsers disagree about which wins', async () => {
+  const raw = await driveRaw([
+    '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+    '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_message","arguments":{}},"method":"tools/list"}',
+  ], join(here, 'raw-echo-server.mjs'), 2);
+  const refused = raw.find((l) => l.includes('repeats the key'))!;
+  assert.ok(refused.startsWith('{"jsonrpc":"2.0","id":7,"error":'), refused.slice(0, 80));
+  assert.match(refused, /repeats the key \\"method\\"/);
+  assert.ok(!raw.some((l) => l.includes('SERVER SAW')), 'and it never reached the server');
+});
+

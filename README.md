@@ -12,7 +12,7 @@ The sections below are for engineers and say how, and how it was tested.
 
 ```bash
 npm install
-npm test          # 149 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 152 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -31,7 +31,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 149 tests run in CI on every push and pull request, across
+The type check and all 152 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -617,7 +617,13 @@ unverified along with the hash to pin. `examples/manifest.json` is a complete on
   trailing comma, or wrapped in a batch, reached a server with a more forgiving
   parser without ever being judged: the same escape was withheld when sent plainly
   and ran when sent that way. The current MCP spec has no batching, so little is
-  lost, but a client that still batches will see its batch refused.
+  lost, but a client that still batches will see its batch refused. What it does
+  forward, it forwards as written, not re-serialised: `JSON.parse` followed by
+  `JSON.stringify` turns the 64-bit id `1234567890123456789` into
+  `1234567890123456800`, so the proxy used to hand the server a different
+  `message_id` than the agent sent, and the server acted on a different record than
+  the one the person approved. A request that repeats a key is refused, since the
+  server's parser, not this one, now decides which copy wins.
 - **Severity weighed the verb and ignored the scope, until 2026-09-23 — and
   still only sees the scope it can name.** Every rule in `deriveSeverity` keyed
   off which effect a tool had (`write`, `delete`, ...); none of them looked at
@@ -699,6 +705,7 @@ src/core/narrate.ts      the untrusted half, pluggable
 src/core/resolver.node.ts filesystem resolution, kept out of the browser bundle
 src/mcp/adapt.ts         MCP definitions → something derivable, and what was lost
 src/mcp/manifest.ts      a reviewed capability manifest: effects and boundaries, hash-verified
+src/mcp/json.ts          readers JSON.parse cannot answer: a raw id, and repeated keys
 src/mcp/gate.ts          the guard: derive → narrate → verify → render
 src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
 src/mcp/cli.ts           the entry point; loads and verifies a manifest, then starts the proxy

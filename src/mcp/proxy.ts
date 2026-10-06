@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { gate, formatConsent, thresholdRank, type GateOptions } from './gate.ts';
 import type { McpToolDefinition } from './adapt.ts';
 import { manifestCoverage, unmatchedManifestTools } from './manifest.ts';
+import { duplicateKeys, rawId } from './json.ts';
 
 /**
  * A stdio MCP proxy. It sits between a client and a real MCP server, learns the
@@ -64,8 +65,14 @@ export function startProxy(command: string, args: string[], options: ProxyOption
   /** Client messages are handled in the order they arrived, not as they resolve. */
   let queue: Promise<void> = Promise.resolve();
 
-  const send = (stream: NodeJS.WritableStream, message: JsonRpc) => {
-    stream.write(JSON.stringify(message) + '\n');
+  /**
+   * An error reply to the client, with the request's id written exactly as the client
+   * wrote it. Going through JSON.stringify would round a 64-bit integer id, and the
+   * client could not then match the reply to its request. `idText` is the raw text, or
+   * undefined for a message with none.
+   */
+  const reply = (idText: string | undefined, error: { code: number; message: string; data?: unknown }) => {
+    process.stdout.write(`{"jsonrpc":"2.0","id":${idText ?? 'null'},"error":${JSON.stringify(error)}}\n`);
   };
 
   // --- server → client: learn tool definitions on the way past ---------------
@@ -105,7 +112,9 @@ export function startProxy(command: string, args: string[], options: ProxyOption
       }
     }
 
-    send(process.stdout, message);
+    // The server's own line, untouched: re-serialising it would round any integer
+    // above 2^53 in a result, or in an id the client is waiting on.
+    process.stdout.write(line + '\n');
   });
 
   // --- client → server: gate tools/call --------------------------------------
@@ -124,11 +133,7 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     try {
       parsed = JSON.parse(line);
     } catch {
-      send(process.stdout, {
-        jsonrpc: '2.0',
-        id: null as never,
-        error: { code: -32700, message: 'Airlock: that line is not valid JSON, so it was not forwarded.' },
-      });
+      reply(undefined, { code: -32700, message: 'Airlock: that line is not valid JSON, so it was not forwarded.' });
       return;
     }
     // A JSON-RPC batch is an array of requests. It has no `method` of its own, so
@@ -137,21 +142,33 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     // with a batch of our own; the current MCP spec dropped batching, so it is
     // refused instead.
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      send(process.stdout, {
-        jsonrpc: '2.0',
-        id: null as never,
-        error: { code: -32600, message: 'Airlock: only a single JSON-RPC request per line is forwarded (a batch is refused, because its calls cannot each be judged).' },
-      });
+      reply(undefined, { code: -32600, message: 'Airlock: only a single JSON-RPC request per line is forwarded (a batch is refused, because its calls cannot each be judged).' });
       return;
     }
     const message = parsed as JsonRpc;
+    const idText = rawId(line);
+
+    // The client's line is forwarded exactly as written (below), so the server's own
+    // parser decides what it means. JSON.parse keeps the last of two identical keys and
+    // some parsers keep the first, so a repeated key could be read here as one request
+    // and there as another. Nothing legitimate repeats a key; ambiguous text is refused.
+    const repeated = duplicateKeys(line);
+    if (repeated.length > 0) {
+      reply(idText, { code: -32600, message: `Airlock: the request repeats the key ${repeated.map((k) => JSON.stringify(k)).join(', ')}; parsers disagree about which one wins, so it was not forwarded.` });
+      return;
+    }
 
     if (message.method === 'tools/list' && message.id !== undefined) {
       listRequests.add(message.id);
     }
 
+    // Forwarded as written, not re-serialised: JSON.stringify(JSON.parse(x)) rounds an
+    // integer above 2^53, so the server used to be handed a different message_id than
+    // the agent sent, and acted on a different record than the one the person approved.
+    const forward = () => server.stdin.write(line + '\n');
+
     if (message.method !== 'tools/call') {
-      send(server.stdin, message);
+      forward();
       return;
     }
 
@@ -166,14 +183,7 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     if (!def) {
       // A call to a tool we never saw declared. Refusing is the only safe move:
       // nothing can be derived about a tool whose schema was never seen.
-      send(process.stdout, {
-        jsonrpc: '2.0',
-        id: message.id,
-        error: {
-          code: -32602,
-          message: `Airlock: refusing '${name}' — no tool definition was seen for it.`,
-        },
-      });
+      reply(idText, { code: -32602, message: `Airlock: refusing '${name}' — no tool definition was seen for it.` });
       return;
     }
 
@@ -186,19 +196,12 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     try {
       decision = await gate(def, { id: String(message.id ?? name), tool: name, args }, options);
     } catch (e) {
-      send(process.stdout, {
-        jsonrpc: '2.0',
-        id: message.id,
-        error: {
-          code: -32000,
-          message: `Airlock refused '${name}': the call could not be judged (${(e as Error).message}).`,
-        },
-      });
+      reply(idText, { code: -32000, message: `Airlock refused '${name}': the call could not be judged (${(e as Error).message}).` });
       return;
     }
 
     if (!decision.requiresApproval) {
-      send(server.stdin, message);
+      forward();
       return;
     }
 
@@ -213,18 +216,14 @@ export function startProxy(command: string, args: string[], options: ProxyOption
     }
 
     if (approved) {
-      send(server.stdin, message);
+      forward();
       return;
     }
 
-    send(process.stdout, {
-      jsonrpc: '2.0',
-      id: message.id,
-      error: {
-        code: -32000,
-        message: `Airlock withheld this call pending approval.\n\n${card}`,
-        data: { severity: decision.facts.severity, signals: decision.facts.signals },
-      },
+    reply(idText, {
+      code: -32000,
+      message: `Airlock withheld this call pending approval.\n\n${card}`,
+      data: { severity: decision.facts.severity, signals: decision.facts.signals },
     });
   }
 
