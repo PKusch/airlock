@@ -710,6 +710,8 @@ unverified along with the hash to pin. `examples/manifest.json` is a complete on
 
 ```
 src/core/derive.ts       deterministic facts. no model may run here.
+src/core/types.ts        the shapes everything shares: effects, severity, facts, verdicts
+src/core/constraint.ts   a boundary check that can say "not checked", not only yes or no
 src/core/verify.ts       the one-way checks, and prose assembly
 src/core/narrate.ts      the untrusted half, pluggable
 src/core/resolver.node.ts filesystem resolution, kept out of the browser bundle
@@ -721,8 +723,13 @@ src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
 src/mcp/cli.ts           the entry point; loads and verifies a manifest, then starts the proxy
 src/mcp/args.ts          the command line and AIRLOCK_CONFINE, read as data
 src/fixtures/benign.ts   30 ordinary calls, for the alarm rate
+src/fixtures/tools.ts    the made-up tool catalogue the attack suite runs against
+src/fixtures/calls.ts    the calls replayed against it, and what a person would assume from each name
 corpus/                  36 real MCP definitions with ground truth; two corpora (22 + 28 tools) of verbs the vocabulary did not know
 test/gate.test.ts        attack suite + calibration
+test/constraint.test.ts  the three-state boundary primitives, over every variant
+test/real-corpus.test.ts the deriver against the 36 real tool definitions
+test/annotations.test.ts what a server's own hints may add, and that they never lower anything
 test/paths.test.ts       the boundary check against real path semantics, with a backslash-heavy fuzz
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
@@ -731,6 +738,13 @@ test/manifest.test.ts    the manifest: parsing, validation, and the integrity ha
 test/scope.test.ts       explicit scope large enough to escalate on its own, not just the verb
 test/symlink.test.ts     real symlinks on a real filesystem
 test/mcp.test.ts         end to end through a child process over stdio
+test/cli.test.ts         the command line, AIRLOCK_CONFINE and the manifest flags
+test/cli-spawn.test.ts   a server command that does not exist
+test/threshold.test.ts   a threshold that is not a severity is refused, never read as "stop nothing"
+test/json.test.ts        the raw-id and repeated-key readers
+test/lifecycle.test.ts   the proxy exits with the client and with the server, and leaves no orphan
+test/*-server.mjs        small fake MCP servers: ordinary, malformed, lenient, unreadable-tool, raw-echo
+test/attack-report.ts    the demo behind npm run attack, with calibrate.ts, audit-real.ts and unrecognised-report.ts for the other scripts
 ```
 
 ## License
