@@ -40,11 +40,9 @@ lists the known gaps.
 
 ## How to report
 
-Use GitHub's private report: open the **Security** tab of this repository and
-choose **Report a vulnerability**. Please do not open a public issue for a bypass
-until it is fixed.
+Open a new issue titled **Security report**. Say only that you have found something, and leave out the details, so nothing is made public before it is fixed. I will reply and we can move the details somewhere private.
 
-A good report has the tool definition, the arguments, what Airlock showed, and
+Once we are talking privately, a good report has the tool definition, the arguments, what Airlock showed, and
 what it should have shown. A failing test in the style of `test/attack-report.ts`
 is the fastest possible way to make the point.
 
