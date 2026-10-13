@@ -1,5 +1,7 @@
 # Airlock
 
+[![checks](https://github.com/PKusch/airlock/actions/workflows/checks.yml/badge.svg)](https://github.com/PKusch/airlock/actions/workflows/checks.yml)
+
 **Before an AI agent runs a tool, a person sees in plain words what it will do. The words are built from the facts of the call, not written by the agent, so the agent cannot talk anyone into approving it.**
 
 An agent is about to run a tool. Before it does, a person has to approve it. The
