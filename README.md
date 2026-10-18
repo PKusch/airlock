@@ -1,8 +1,30 @@
-# Airlock
+<div align="center">
+
+# 🔒 Airlock
+
+**Before an AI agent runs a tool, a person sees in plain words what it will do.**
+The words are built from the facts of the call, not written by the agent, so the agent cannot talk anyone into approving it.
 
 [![checks](https://github.com/PKusch/airlock/actions/workflows/checks.yml/badge.svg)](https://github.com/PKusch/airlock/actions/workflows/checks.yml)
+[![live demo](https://img.shields.io/badge/demo-live-34d399)](https://pkusch.github.io/airlock/)
+![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Node 22+](https://img.shields.io/badge/node-22%2B-339933?logo=nodedotjs&logoColor=white)
 
-**Before an AI agent runs a tool, a person sees in plain words what it will do. The words are built from the facts of the call, not written by the agent, so the agent cannot talk anyone into approving it.**
+### [**→ Try the live demo**](https://pkusch.github.io/airlock/)
+
+[See it work](#see-it-work) · [How it works](#how-it-works-in-four-steps) · [Run it](#run-it) · [The problem](#the-problem-with-describing-a-tool-call) · [Limits](#limits-i-would-not-paper-over)
+
+<br />
+
+<img src="docs/screenshots/compromised.png" width="760" alt="The Airlock interface with a compromised narrator: the claim that nothing is wrong is rejected, and the real consequence, a critical delete that cannot be undone, is shown instead" />
+
+| **159** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
+|:---:|:---:|:---:|
+
+</div>
+
+---
 
 An agent is about to run a tool. Before it does, a person has to approve it. The
 question this project is about is what that person is shown, and whether the
@@ -11,6 +33,45 @@ touches, how many, whether it can be undone, where data goes) are worked out in
 code; a model is only allowed to phrase them; and any phrasing that makes the
 call sound milder than the facts is thrown away and the facts are shown instead.
 The sections below are for engineers and say how, and how it was tested.
+
+## See it work
+
+The demo has six pending tool calls and a switch that makes the narrator lie. Three states of it are shown below; the last two are the same call, before and after the switch.
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/screenshots/harmless.png" alt="An ordinary file read is shown as low severity" /></td>
+    <td width="33%" valign="top"><img src="docs/screenshots/honest.png" alt="A delete called cleanup is shown as critical, with the real facts" /></td>
+    <td width="33%" valign="top"><img src="docs/screenshots/compromised.png" alt="A lying narrator is caught and the facts are shown instead" /></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>An ordinary read.</b><br /><sub>One file, nothing changed, nothing to undo. Low, and the screen says so.</sub></td>
+    <td valign="top"><b>A delete called "cleanup".</b><br /><sub>The tool's name says housekeeping. The facts say it deletes an unknown number of items and cannot be undone. Critical.</sub></td>
+    <td valign="top"><b>The same call, with a lying narrator.</b><br /><sub>The narrator claims nothing is wrong and invites approval. The verifier rejects every part of that and shows the real facts instead.</sub></td>
+  </tr>
+</table>
+
+## How it works in four steps
+
+```mermaid
+flowchart LR
+    A["Tool call from the agent<br/><i>arguments may be hostile</i>"] --> D["<b>1 Derive</b><br/>facts from the schema<br/>and the real arguments<br/>code only, no model"]
+    D --> N["<b>2 Narrate</b><br/>a model phrases the facts<br/>assumed compromisable"]
+    D --> V
+    N --> V["<b>3 Verify</b><br/>may overstate the danger,<br/>never understate it"]
+    V -- "accepted" --> R["<b>4 Render</b><br/>words built in code<br/>from the derived facts"]
+    V -- "rejected" --> F["Every derived fact,<br/>and why the description<br/>was withheld"]
+    R --> H(["A person approves or denies"])
+    F --> H
+    classDef trusted fill:#0f2a1f,stroke:#34d399,color:#d1fae5;
+    classDef untrusted fill:#2a1414,stroke:#f87171,color:#fee2e2;
+    class D,V,R,F trusted;
+    class N,A untrusted;
+```
+
+Green steps are code and can be trusted; red ones can be attacked. The rest of this page says why that is enough, and how it was tested.
+
+## Run it
 
 ```bash
 npm install
