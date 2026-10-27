@@ -19,7 +19,7 @@ The words are built from the facts of the call, not written by the agent, so the
 
 <img src="docs/screenshots/compromised.png" width="760" alt="The Airlock interface with a compromised narrator: the claim that nothing is wrong is rejected, and the real consequence, a critical delete that cannot be undone, is shown instead" />
 
-| **159** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
+| **165** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
 |:---:|:---:|:---:|
 
 </div>
@@ -75,7 +75,7 @@ Green steps are code and can be trusted; red ones can be attacked. The rest of t
 
 ```bash
 npm install
-npm test          # 159 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest
+npm test          # 165 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest, draft manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -94,7 +94,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 159 tests run in CI on every push and pull request, across
+The type check and all 165 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
@@ -608,6 +608,13 @@ says is worse than none. These are all refused, each with the reason: a bad
 effect name, a section name this build does not read (`effect` for `effects`), a
 key written twice (the last would silently win), and a tool named `__proto__`.
 
+Writing one from nothing is the slow part. `npm run draft -- tools.json` reads a
+`tools/list` dump (the file `npm run introspect` writes will do) and prints a
+starting file. A tool the gate already understands comes with the effects it
+infers, so you can see what it thinks. A tool it cannot place is written as
+`"TODO"`, and `"TODO"` is not an effect, so the file is refused until a person
+has replaced every one. A draft cannot be loaded and mistaken for a review.
+
 Pin the file with `--manifest-sha` and a swapped copy is refused instead of
 trusted. Leave the pin out and the manifest still works, but is printed as
 unverified along with the hash to pin. `examples/manifest.json` is a complete one.
@@ -780,6 +787,7 @@ src/core/narrate.ts      the untrusted half, pluggable
 src/core/resolver.node.ts filesystem resolution, kept out of the browser bundle
 src/mcp/adapt.ts         MCP definitions → something derivable, and what was lost
 src/mcp/manifest.ts      a reviewed capability manifest: effects and boundaries, hash-verified
+src/mcp/draft.ts         a draft manifest from a tools/list dump; unplaced tools are TODO
 src/mcp/json.ts          readers JSON.parse cannot answer: a raw id, and repeated keys
 src/mcp/gate.ts          the guard: derive → narrate → verify → render
 src/mcp/proxy.ts         stdio proxy; gates tools/call, learns from tools/list
@@ -794,6 +802,7 @@ test/constraint.test.ts  the three-state boundary primitives, over every variant
 test/real-corpus.test.ts the deriver against the 36 real tool definitions
 test/annotations.test.ts what a server's own hints may add, and that they never lower anything
 test/paths.test.ts       the boundary check against real path semantics, with a backslash-heavy fuzz
+test/draft.test.ts       the draft manifest: TODO cannot be loaded, recognised tools carry their effects
 test/unrecognised.test.ts what the vocabulary misses, before and after extending it, pinned
 test/payloads.test.ts    inside structured payloads: what is read, and that reading only adds
 test/privilege.test.ts   privilege changes: a floor independent of the server's hints
