@@ -19,7 +19,7 @@ The words are built from the facts of the call, not written by the agent, so the
 
 <img src="docs/screenshots/compromised.png" width="760" alt="The Airlock interface with a compromised narrator: the claim that nothing is wrong is rejected, and the real consequence, a critical delete that cannot be undone, is shown instead" />
 
-| **165** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
+| **169** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
 |:---:|:---:|:---:|
 
 </div>
@@ -75,7 +75,7 @@ Green steps are code and can be trusted; red ones can be attacked. The rest of t
 
 ```bash
 npm install
-npm test          # 165 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest, draft manifest
+npm test          # 169 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest, draft manifest
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -94,7 +94,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 165 tests run in CI on every push and pull request, across
+The type check and all 169 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
