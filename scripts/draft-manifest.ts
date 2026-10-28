@@ -15,7 +15,13 @@ if (!file) {
   process.exit(2);
 }
 
-const data = JSON.parse(readFileSync(file, 'utf8'));
+let data: any;
+try {
+  data = JSON.parse(readFileSync(file, 'utf8'));
+} catch (e) {
+  console.error(`airlock: cannot read '${file}': ${(e as Error).message}`);
+  process.exit(2);
+}
 const tools = Array.isArray(data)
   ? data.flatMap((item) => (Array.isArray(item?.tools) ? item.tools : [item]))
   : data.tools;
