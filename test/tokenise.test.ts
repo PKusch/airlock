@@ -22,3 +22,14 @@ test('normalisePath collapses dot segments and doubled slashes', () => {
 test('normalisePath cannot climb above the root', () => {
   assert.equal(normalisePath('/../../etc/passwd'), '/etc/passwd');
 });
+
+test('normalisePath reads a backslash as a separator, so a Windows-style climb is still seen', () => {
+  assert.equal(normalisePath('/HOME/projects/x\\..\\..\\.ssh'), '/HOME/.ssh');
+  assert.equal(normalisePath('a\\..\\..\\b'), '../b');
+});
+
+test('normalisePath puts a leading tilde under /HOME but leaves a tilde inside a name alone', () => {
+  assert.equal(normalisePath('~'), '/HOME');
+  assert.equal(normalisePath('~/notes'), '/HOME/notes');
+  assert.equal(normalisePath('/tmp/~backup'), '/tmp/~backup');
+});
