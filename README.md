@@ -75,7 +75,7 @@ Green steps are code and can be trusted; red ones can be attacked. The rest of t
 
 ```bash
 npm install
-npm test          # 169 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest, draft manifest
+npm test          # 175 tests: constraints, attacks, calibration, symlinks, MCP, real corpus, vocabulary, annotations, payloads, privilege changes, scope, command line, manifest, draft manifest, tool-name and path handling
 npm run attack    # the demo: every scenario against a compromised narrator
 npm run calibrate # how loud the gate is on ordinary work
 npm run audit     # against 36 real MCP tool definitions
@@ -94,7 +94,7 @@ node --experimental-strip-types src/mcp/cli.ts \
   -- npx @modelcontextprotocol/server-filesystem /Users/me/projects
 ```
 
-The type check and all 169 tests run in CI on every push and pull request, across
+The type check and all 175 tests run in CI on every push and pull request, across
 Node 22 and 24, so the claims below are gated rather than asserted.
 
 ---
