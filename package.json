@@ -19,7 +19,7 @@
     "introspect": "node scripts/introspect.mjs"
   },
   "dependencies": {
-    "lucide-react": "^0.546.0",
+    "lucide-react": "^1.66.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
