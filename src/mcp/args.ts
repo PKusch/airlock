@@ -48,6 +48,11 @@ export function parseConfinement(raw: string | undefined): { confinement: Record
     if (!key || !value) {
       return { error: `AIRLOCK_CONFINE: '${pair}' should look like parameter=value` };
     }
+    // One boundary per parameter: a second one used to replace the first without
+    // a word, so an operator listing two folders got only the last.
+    if (Object.hasOwn(confinement, key)) {
+      return { error: `AIRLOCK_CONFINE: '${key}' is given twice; one boundary per parameter` };
+    }
     confinement[key] = value;
   }
   return { confinement };

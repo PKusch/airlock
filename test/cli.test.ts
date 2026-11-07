@@ -163,3 +163,10 @@ test('a mistyped, repeated or name=value flag is refused, not skipped', () => {
   assert.equal(parseCli(['--manifest', 'm.json', '--', 'x', '--bogus'], {}).kind, 'run');
   assert.equal(parseCli(['x', '--bogus'], {}).kind, 'run');
 });
+
+test('AIRLOCK_CONFINE with the same parameter twice is refused, not overwritten', () => {
+  const r = parseCli(['--', 'x'], { AIRLOCK_CONFINE: '*.path=/home/me/a,*.path=/home/me/b' });
+  assert.equal(r.kind, 'error');
+  assert.match((r as { message: string }).message, /'\*\.path' is given twice/);
+  assert.equal(parseCli(['--', 'x'], { AIRLOCK_CONFINE: '*.path=/a,*.url=https://e.com' }).kind, 'run');
+});
