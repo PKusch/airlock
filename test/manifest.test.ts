@@ -193,3 +193,10 @@ test('an empty declared list never clears a tool the gate can read for itself', 
   assert.ok(claimsNothing.facts.signals.some((s) => s.code === 'undeclared_effect'), 'the disagreement is itself recorded');
 });
 
+
+test('a manifest saved with a byte-order mark parses, and its sha still covers the mark', () => {
+  const text = '{"version":1,"effects":{"charge_card":["spend"]}}';
+  const r = parseManifest('﻿' + text);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.notEqual(manifestSha('﻿' + text), manifestSha(text));
+});

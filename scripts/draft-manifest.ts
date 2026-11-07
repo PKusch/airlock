@@ -23,7 +23,7 @@ if (!file) {
 
 let data: any;
 try {
-  data = JSON.parse(readFileSync(file, 'utf8'));
+  data = JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); // a BOM from Notepad is not content
 } catch (e) {
   console.error(`airlock: cannot read '${file}': ${(e as Error).message}`);
   process.exit(2);

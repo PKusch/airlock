@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -41,5 +41,13 @@ test('draft: a file that is not JSON ends in one plain line', () => {
 test('draft: a tools list prints a manifest on stdout', () => {
   const r = run('corpus/unrecognised-verbs-heldout.json');
   assert.equal(r.status, 0);
+  assert.equal(JSON.parse(r.stdout).version, 1);
+});
+
+test('draft: a tools file saved with a byte-order mark is read', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'draft-')), 'bom.json');
+  writeFileSync(file, '﻿' + readFileSync('corpus/unrecognised-verbs-heldout.json', 'utf8'));
+  const r = run(file);
+  assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(r.stdout).version, 1);
 });

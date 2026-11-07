@@ -54,7 +54,9 @@ export function manifestSha(text: string): string {
 export function parseManifest(text: string): ParseResult {
   let data: unknown;
   try {
-    data = JSON.parse(text);
+    // An editor that saves with a byte-order mark (Notepad) must not make a
+    // reviewed manifest unreadable; the sha is taken over the raw text first.
+    data = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch (e) {
     return { ok: false, error: `not valid JSON: ${(e as Error).message}` };
   }
