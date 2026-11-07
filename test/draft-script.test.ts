@@ -14,6 +14,15 @@ test('draft: no file given prints usage and exits 2', () => {
   assert.match(r.stderr, /usage: npm run draft/);
 });
 
+test('draft: --help prints usage on stdout and exits 0, not read as a file', () => {
+  for (const flag of ['--help', '-h']) {
+    const r = run(flag);
+    assert.equal(r.status, 0, flag);
+    assert.match(r.stdout, /usage: npm run draft/);
+    assert.equal(r.stderr, '');
+  }
+});
+
 test('draft: a missing file ends in one plain line, not a stack trace', () => {
   const r = run('does-not-exist.json');
   assert.equal(r.status, 2);

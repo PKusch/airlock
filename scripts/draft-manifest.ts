@@ -9,9 +9,15 @@
 import { readFileSync } from 'node:fs';
 import { draftManifest } from '../src/mcp/draft.ts';
 
+const usage = 'usage: npm run draft -- <tools.json>';
 const file = process.argv[2];
+if (file === '--help' || file === '-h') {
+  // asked for, so on stdout and not an error (it used to be read as a file name)
+  console.log(usage);
+  process.exit(0);
+}
 if (!file) {
-  console.error('usage: npm run draft -- <tools.json>');
+  console.error(usage);
   process.exit(2);
 }
 
