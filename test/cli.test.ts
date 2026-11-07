@@ -145,3 +145,21 @@ test('a verified manifest is confirmed on stderr, with counts', () => {
     rmSync(m, { force: true });
   }
 });
+
+test('a mistyped, repeated or name=value flag is refused, not skipped', () => {
+  // A skipped typo started the proxy without the reviewed manifest, silently.
+  const cases: [string[], RegExp][] = [
+    [['--manifset', 'm.json', '--', 'x'], /unknown option '--manifset'/],
+    [['--bogus', '--', 'x'], /unknown option '--bogus'/],
+    [['--manifest=m.json', '--', 'x'], /as two words: --manifest m.json/],
+    [['--manifest', 'a.json', '--manifest', 'b.json', '--', 'x'], /--manifest given twice/],
+  ];
+  for (const [argv, msg] of cases) {
+    const r = parseCli(argv, {});
+    assert.equal(r.kind, 'error', argv.join(' '));
+    assert.match((r as { message: string }).message, msg);
+  }
+  // the known forms still run, and nothing after -- is read as a flag
+  assert.equal(parseCli(['--manifest', 'm.json', '--', 'x', '--bogus'], {}).kind, 'run');
+  assert.equal(parseCli(['x', '--bogus'], {}).kind, 'run');
+});

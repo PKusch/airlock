@@ -64,6 +64,25 @@ function flagValue(before: string[], name: string): { value?: string } | { error
   return { value };
 }
 
+const VALUE_FLAGS = ['--manifest', '--manifest-sha'];
+
+/** Every word before `--` must be a known flag or its value, each flag at most
+ * once. An unknown one used to be skipped, so a typo like `--manifset x.json`
+ * started the proxy without the reviewed manifest and without a word. */
+function unknownFlag(flags: string[]): string | undefined {
+  const seen = new Set<string>();
+  for (let i = 0; i < flags.length; i++) {
+    const f = flags[i];
+    const eq = VALUE_FLAGS.find((v) => f.startsWith(v + '='));
+    if (eq) return `write ${eq} and its value as two words: ${eq} ${f.slice(eq.length + 1)}`;
+    if (!VALUE_FLAGS.includes(f)) return `unknown option '${f}'; the options are ${VALUE_FLAGS.join(' and ')} (see --help)`;
+    if (seen.has(f)) return `${f} given twice`;
+    seen.add(f);
+    i++; // skip its value; flagValue says if it is missing
+  }
+  return undefined;
+}
+
 export function parseCli(argv: string[], env: Record<string, string | undefined>): Parsed {
   const sep = argv.indexOf('--');
   const before = sep === -1 ? argv : argv.slice(0, sep);
@@ -79,6 +98,8 @@ export function parseCli(argv: string[], env: Record<string, string | undefined>
   // and nothing in it is read as a flag, so a server invoked as `airlock node s.js`
   // still works and a `--flag` meant for that server is never stolen.
   const flags = sep === -1 ? [] : before;
+  const unknown = unknownFlag(flags);
+  if (unknown) return { kind: 'error', message: unknown };
   const manifest = flagValue(flags, '--manifest');
   if ('error' in manifest) return { kind: 'error', message: manifest.error };
   const sha = flagValue(flags, '--manifest-sha');
