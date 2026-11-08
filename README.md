@@ -19,7 +19,7 @@ The words are built from the facts of the call, not written by the agent, so the
 
 <img src="docs/screenshots/compromised.png" width="760" alt="The Airlock interface with a compromised narrator: the claim that nothing is wrong is rejected, and the real consequence, a critical delete that cannot be undone, is shown instead" />
 
-| **169** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
+| **180** tests, in CI on Node 22 and 24 | **36** real MCP tool definitions audited | **50** ordinary tools checked for what the vocabulary misses |
 |:---:|:---:|:---:|
 
 </div>
