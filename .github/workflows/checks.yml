@@ -47,7 +47,11 @@ jobs:
       # symlinks, MCP proxy, the real-corpus audit, the vocabulary gap, the
       # parameter split, MCP annotations and structured payloads.
       - name: Tests
-        run: npm test
+        run: npm test 2>&1 | tee test.log
+
+      # A test count in the README that differs from what just ran fails here.
+      - name: README test counts match
+        run: node scripts/check-test-count.mjs test.log
 
       - name: Demo scripts still run (attack)
         run: npm run attack
