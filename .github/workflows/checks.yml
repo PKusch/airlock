@@ -47,6 +47,9 @@ jobs:
       # symlinks, MCP proxy, the real-corpus audit, the vocabulary gap, the
       # parameter split, MCP annotations and structured payloads.
       - name: Tests
+        # shell: bash turns on pipefail; without it a failing test would be
+        # hidden behind tee's own exit code of 0.
+        shell: bash
         run: npm test 2>&1 | tee test.log
 
       # A test count in the README that differs from what just ran fails here.
